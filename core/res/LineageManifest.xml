@@ -34,4 +34,12 @@
 
     <!-- Used to notify when SU is used. -->
     <protected-broadcast android:name="android.intent.action.SU_SESSION_CHANGED" />
+
+    <!-- @hide Allows an application to change the package signature as
+         seen by applications -->
+    <permission android:name="android.permission.FAKE_PACKAGE_SIGNATURE"
+        android:protectionLevel="signature"
+        android:label="@string/permlab_fakePackageSignature"
+        android:description="@string/permdesc_fakePackageSignature"/>
+
 </manifest>
