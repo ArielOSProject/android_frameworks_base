@@ -739,6 +739,26 @@ final class DefaultPermissionGrantPolicy {
                         STORAGE_PERMISSIONS, true, userId);
             }
 
+            // MicroG
+            PackageParser.Package microgGms = getSystemPackageLPr("com.google.android.gms");
+            if(microgGms != null
+            		&& doesPackageSupportRuntimePermissions(microgGms)){
+              Log.i(TAG, "Granting permissions to microGMS");
+              grantRuntimePermissionsLPw(microgGms, CONTACTS_PERMISSIONS, userId);
+              grantRuntimePermissionsLPw(microgGms, LOCATION_PERMISSIONS, userId);
+              grantRuntimePermissionsLPw(microgGms, PHONE_PERMISSIONS, userId);
+              grantRuntimePermissionsLPw(microgGms, STORAGE_PERMISSIONS, userId);
+            }
+
+            // Mozilla ULP
+            PackageParser.Package mozillaNLP = getSystemPackageLPr("org.microg.nlp.backend.ichnaea");
+            if(mozillaNLP != null
+            		&& doesPackageSupportRuntimePermissions(mozillaNLP)){
+              Log.i(TAG, "Granting permissions to mozillaNLP");         
+              grantRuntimePermissionsLPw(mozillaNLP, LOCATION_PERMISSIONS, userId);
+              grantRuntimePermissionsLPw(mozillaNLP, PHONE_PERMISSIONS, userId);
+            }
+
             mService.mSettings.onDefaultRuntimePermissionsGrantedLPr(userId);
         }
     }
