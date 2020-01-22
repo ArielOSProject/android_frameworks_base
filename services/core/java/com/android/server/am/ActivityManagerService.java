@@ -2745,7 +2745,7 @@ public class ActivityManagerService extends IActivityManager.Stub
         GL_ES_VERSION = 0;
         mActivityStarter = null;
         mAppErrors = null;
-        mAppOpsService = mInjector.getAppOpsService(null, null);
+        mAppOpsService = mInjector.getAppOpsService(null, null, this);
         mBatteryStatsService = null;
         mCompatModePackages = null;
         mConstants = null;
@@ -2824,7 +2824,8 @@ public class ActivityManagerService extends IActivityManager.Stub
 
         mProcessStats = new ProcessStatsService(this, new File(systemDir, "procstats"));
 
-        mAppOpsService = mInjector.getAppOpsService(new File(systemDir, "appops.xml"), mHandler);
+        mAppOpsService = mInjector.getAppOpsService(new File(systemDir, "appops.xml"), mHandler,
+                this);
         mAppOpsService.startWatchingMode(AppOpsManager.OP_RUN_IN_BACKGROUND, null,
                 new IAppOpsCallback.Stub() {
                     @Override public void opChanged(int op, int uid, String packageName) {
@@ -4995,9 +4996,9 @@ public class ActivityManagerService extends IActivityManager.Stub
                 userId, false, ALLOW_FULL_ONLY, "startActivityInPackage", null);
 
         // TODO: Switch to user app stacks here.
-        return mActivityStarter.startActivityMayWait(null, uid, callingPackage, intent,
-                resolvedType, null, null, resultTo, resultWho, requestCode, startFlags,
-                null, null, null, bOptions, false, userId, inTask, reason);
+        return mActivityStarter.startActivityMayWait(null, uid, ActivityStarter.PID_NULL, uid,
+                callingPackage, intent, resolvedType, null, null, resultTo, resultWho, requestCode,
+                startFlags, null, null, null, bOptions, false, userId, inTask, reason);
     }
 
     @Override
@@ -5017,13 +5018,20 @@ public class ActivityManagerService extends IActivityManager.Stub
     final int startActivitiesInPackage(int uid, String callingPackage,
             Intent[] intents, String[] resolvedTypes, IBinder resultTo,
             Bundle bOptions, int userId) {
+        return startActivitiesInPackage(uid, ActivityStarter.PID_NULL, UserHandle.USER_NULL,
+                callingPackage, intents, resolvedTypes, resultTo, bOptions, userId);
+    }
+
+    final int startActivitiesInPackage(int uid, int realCallingPid, int realCallingUid,
+                                       String callingPackage, Intent[] intents, String[] resolvedTypes,
+                                       IBinder resultTo, Bundle bOptions, int userId) {
 
         final String reason = "startActivityInPackage";
         userId = mUserController.handleIncomingUser(Binder.getCallingPid(), Binder.getCallingUid(),
                 userId, false, ALLOW_FULL_ONLY, reason, null);
         // TODO: Switch to user app stacks here.
-        int ret = mActivityStarter.startActivities(null, uid, callingPackage, intents, resolvedTypes,
-                resultTo, bOptions, userId, reason);
+        int ret = mActivityStarter.startActivities(null, uid, realCallingPid, realCallingUid,
+                callingPackage, intents, resolvedTypes, resultTo, bOptions, userId, reason);
         return ret;
     }
 
@@ -24709,8 +24717,9 @@ public class ActivityManagerService extends IActivityManager.Stub
             return null;
         }
 
-        public AppOpsService getAppOpsService(File file, Handler handler) {
-            return new AppOpsService(file, handler);
+        public AppOpsService getAppOpsService(File file, Handler handler,
+                                              ActivityManagerService service) {
+            return new AppOpsService(file, handler, service);
         }
 
         public Handler getUiHandler(ActivityManagerService service) {

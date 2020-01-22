@@ -1788,6 +1788,11 @@ public class NotificationManagerService extends SystemService {
         @Override
         public boolean areNotificationsEnabledForPackage(String pkg, int uid) {
             checkCallerIsSystemOrSameApp(pkg);
+            if (UserHandle.getCallingUserId() != UserHandle.getUserId(uid)) {
+                getContext().enforceCallingPermission(
+                        android.Manifest.permission.INTERACT_ACROSS_USERS,
+                        "canNotifyAsPackage for uid " + uid);
+            }
 
             return mRankingHelper.getImportance(pkg, uid) != IMPORTANCE_NONE;
         }
@@ -5052,8 +5057,14 @@ public class NotificationManagerService extends SystemService {
             mNotificationLight.turnOff();
         } else {
             mNotificationLight.setModes(ledValues.getBrightness());
-            mNotificationLight.setFlashing(ledValues.getColor(), Light.LIGHT_FLASH_TIMED,
-                    ledValues.getOnMs(), ledValues.getOffMs());
+
+            // we are using 1:0 to indicate LED should stay always on
+            if (ledValues.getOnMs() == 1 && ledValues.getOffMs() == 0) {
+                mNotificationLight.setColor(ledValues.getColor());
+            } else {
+                mNotificationLight.setFlashing(ledValues.getColor(), Light.LIGHT_FLASH_TIMED,
+                        ledValues.getOnMs(), ledValues.getOffMs());
+            }
         }
     }
 

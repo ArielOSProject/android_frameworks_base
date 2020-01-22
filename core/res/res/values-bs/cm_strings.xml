@@ -18,12 +18,21 @@
      limitations under the License.
 -->
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
-  <!-- ADB over network notification -->
-  <!-- ADB over USB and network notification -->
-  <!-- ADB notification message-->
-  <!-- Message to show the user when their vendor image doesn't match the build's fingerprint. -->
-  <!-- Notify user that they are in Lock-to-app (for devices without navbar) -->
-  <!-- Privacy Guard -->
-  <!-- Text of the checkbox for the permission confirmation dialog to remember the user's choice. [CHAR LIMIT=40] -->
-  <!-- App ops requests -->
+    <string name="adb_net_active_notification_title">ADB preko mreže omogućen</string>
+    <string name="privacy_guard_notification">Čuvar privatnosti aktivan</string>
+    <string name="privacy_guard_dialog_title">Čuvar privatnosti</string>
+    <string name="permission_remember_choice">Zapamti moj odabir</string>
+    <string name="app_ops_access_camera">pristup kameri</string>
+    <string name="app_ops_access_location">pristup lokaciji</string>
+    <string name="app_ops_access_notifications">čita vaše obavijesti</string>
+    <string name="app_ops_activate_vpn">aktivira VPN</string>
+    <string name="app_ops_auto_start">pokrene se prilikom paljenja</string>
+    <string name="app_ops_delete_contacts">briše vaše kontakte</string>
+    <string name="app_ops_delete_mms">briše vaše MMS poruke</string>
+    <string name="app_ops_delete_sms">briše vaše SMS poruke</string>
+    <string name="app_ops_make_phone_call">pozivanje telefonskih brojeva</string>
+    <string name="app_ops_read_call_log">čita vaš zapisnik poziva</string>
+    <string name="app_ops_read_contacts">čita vaše kontakte</string>
+    <string name="app_ops_read_mms">čita vaše MMS poruke</string>
+    <string name="app_ops_read_sms">čita vaše SMS poruke</string>
 </resources>
