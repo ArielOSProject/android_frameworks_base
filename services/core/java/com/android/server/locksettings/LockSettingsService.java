@@ -131,6 +131,8 @@ import com.android.server.locksettings.SyntheticPasswordManager.AuthenticationTo
 import com.android.server.locksettings.recoverablekeystore.RecoverableKeyStoreManager;
 import com.android.server.wm.WindowManagerInternal;
 
+import arielos.app.ArielContextConstants;
+
 import libcore.util.HexEncoding;
 
 import java.io.ByteArrayOutputStream;
@@ -3332,11 +3334,10 @@ public class LockSettingsService extends ILockSettings.Stub {
     private void disableEscrowTokenOnNonManagedDevicesIfNeeded(int userId) {
         final UserManagerInternal userManagerInternal = mInjector.getUserManagerInternal();
 
-        // Managed profile should have escrow enabled
-        if (userManagerInternal.isUserManaged(userId)) {
-            Slog.i(TAG, "Managed profile can have escrow token");
-            return;
-        }
+            // Escrow tokens are enabled on automotive builds.
+            if (mContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)) {
+                return;
+            }
 
         // Devices with Device Owner should have escrow enabled on all users.
         if (userManagerInternal.isDeviceManaged()) {
@@ -3354,6 +3355,11 @@ public class LockSettingsService extends ILockSettings.Stub {
 
         // Escrow tokens are enabled on automotive builds.
         if (mContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)) {
+            return;
+        }
+
+        // Escrow tokens are enabled on ArielOS builds.
+        if (mContext.getPackageManager().hasSystemFeature(ArielContextConstants.Features.ARIEL_OS)) {
             return;
         }
 
