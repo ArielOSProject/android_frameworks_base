@@ -1302,6 +1302,7 @@ metalava_framework_docs_args = "--manifest $(location core/res/AndroidManifest.x
     "--hide-package com.android.okhttp " +
     "--hide-package com.android.org.conscrypt --hide-package com.android.server " +
     "--hide-package lineageos.platform --hide-package org.lineageos.platform.internal " +
+    "--hide-package arielos.platform --hide-package com.arielos.platform.internal " +
     "--error UnhiddenSystemApi " +
     "--hide RequiresPermission " +
     "--hide MissingPermission --hide BroadcastBehavior " +

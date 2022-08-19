@@ -123,6 +123,7 @@ import com.android.server.locksettings.recoverablekeystore.RecoverableKeyStoreMa
 import com.android.server.wm.WindowManagerInternal;
 
 import lineageos.providers.LineageSettings;
+import arielos.app.ArielContextConstants;
 
 import libcore.util.HexEncoding;
 
@@ -166,7 +167,7 @@ import javax.crypto.spec.GCMParameterSpec;
 public class LockSettingsService extends ILockSettings.Stub {
     private static final String TAG = "LockSettingsService";
     private static final String PERMISSION = ACCESS_KEYGUARD_SECURE_STORAGE;
-    private static final boolean DEBUG = false;
+    private static final boolean DEBUG = true;
 
     private static final int PROFILE_KEY_IV_SIZE = 12;
     private static final String SEPARATE_PROFILE_CHALLENGE_KEY = "lockscreen.profilechallenge";
@@ -3102,6 +3103,11 @@ public class LockSettingsService extends ILockSettings.Stub {
 
             // Escrow tokens are enabled on automotive builds.
             if (mContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)) {
+                return;
+            }
+
+            // Escrow tokens are enabled on ArielOS builds.
+            if (mContext.getPackageManager().hasSystemFeature(ArielContextConstants.Features.ARIEL_OS)) {
                 return;
             }
 

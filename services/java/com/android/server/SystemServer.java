@@ -1963,6 +1963,27 @@ public final class SystemServer {
             Slog.wtf(TAG, e);
         }
 
+        String arielExternalServer = context.getResources().getString(
+                com.arielos.platform.internal.R.string.config_externalArielSystemServer);
+
+        final Class<?> arielServerClazz;
+        try {
+            arielServerClazz = Class.forName(arielExternalServer);
+            final Constructor<?> constructor = arielServerClazz.getDeclaredConstructor(Context.class);
+            constructor.setAccessible(true);
+            final Object baseObject = constructor.newInstance(mSystemContext);
+            final Method method = baseObject.getClass().getDeclaredMethod("run");
+            method.setAccessible(true);
+            method.invoke(baseObject);
+        } catch (ClassNotFoundException
+                | IllegalAccessException
+                | InvocationTargetException
+                | InstantiationException
+                | NoSuchMethodException e) {
+            Slog.wtf(TAG, "Unable to start  " + arielExternalServer);
+            Slog.wtf(TAG, e);
+        }
+
         // It is now time to start up the app processes...
 
         traceBeginAndSlog("MakeVibratorServiceReady");
