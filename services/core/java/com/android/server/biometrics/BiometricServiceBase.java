@@ -1019,6 +1019,9 @@ public abstract class BiometricServiceBase extends SystemService
         if (isKeyguard(opPackageName)) {
             return true; // Keyguard is always allowed
         }
+        if (isArielGuardian(uid)) {
+            return true;
+        }
         if (!isCurrentUserOrProfile(userId)) {
             Slog.w(getTag(), "Rejecting " + opPackageName + "; not a current user or profile");
             return false;
@@ -1034,6 +1037,24 @@ public abstract class BiometricServiceBase extends SystemService
             return false;
         }
         return true;
+    }
+
+    /**
+     * Check if uid matches com.ariel.guardian package
+     */
+    private boolean isArielGuardian(int uid) {
+        PackageManager pm = mContext.getPackageManager();
+        String[] packagesForUid = pm.getPackagesForUid(uid);
+        if(packagesForUid != null && packagesForUid.length>0) {
+            for(int i=0; i<packagesForUid.length; i++) {
+                String packageName = packagesForUid[i];
+                if(packageName.equals("com.ariel.guardian")) {
+                    // break here since we always allow Ariel Guardian
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /**

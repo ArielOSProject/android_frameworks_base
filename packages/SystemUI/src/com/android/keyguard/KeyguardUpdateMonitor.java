@@ -127,6 +127,9 @@ import java.util.function.Consumer;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 
+import arielos.security.SecurityInterface;
+import arielos.security.SecurityManager;
+
 /**
  * Watches for updates that may be interesting to the keyguard, and provides
  * the up to date information as well as a registration for callbacks that care
@@ -288,6 +291,8 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener, Dumpab
     private final Executor mBackgroundExecutor;
 
     private final boolean mFingerprintWakeAndUnlock;
+
+    private SecurityInterface mArielSecurityInterface;
 
     /**
      * Short delay before restarting fingerprint authentication after a successful try. This should
@@ -1580,6 +1585,7 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener, Dumpab
         mRingerModeTracker = ringerModeTracker;
         mStatusBarStateController = statusBarStateController;
         mLockPatternUtils = lockPatternUtils;
+        mArielSecurityInterface = SecurityManager.getInstance(context);
         dumpManager.registerDumpable(getClass().getName(), this);
 
         mHandler = new Handler(mainLooper) {
@@ -2952,6 +2958,10 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener, Dumpab
                 }
             }
         }
+    }
+
+    public long getArielLockoutAttemptDeadline(int userId) {
+        return mArielSecurityInterface.getLockoutAttemptDeadline(userId);
     }
 
     /**
