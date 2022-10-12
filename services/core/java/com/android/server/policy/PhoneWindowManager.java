@@ -233,6 +233,7 @@ import lineageos.providers.LineageSettings;
 
 import org.lineageos.internal.buttons.LineageButtons;
 import org.lineageos.internal.util.ActionUtils;
+import arielos.util.ArielUtils;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -721,6 +722,8 @@ public class PhoneWindowManager implements WindowManagerPolicy {
     private boolean mLongSwipeDown;
 
     private LineageHardwareManager mLineageHardware;
+
+    private ArielUtils mArielUtils;
 
     private class PolicyHandler extends Handler {
         @Override
@@ -1410,9 +1413,11 @@ public class PhoneWindowManager implements WindowManagerPolicy {
                 break;
             case LONG_PRESS_POWER_GLOBAL_ACTIONS:
                 mPowerKeyHandled = true;
-                performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, false,
+                if(!mArielUtils.isPanicModeActive()) {
+                    performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, false,
                         "Power - Long Press - Global Actions");
-                showGlobalActionsInternal();
+                    showGlobalActionsInternal();
+                }
                 break;
             case LONG_PRESS_POWER_SHUT_OFF:
             case LONG_PRESS_POWER_SHUT_OFF_NO_CONFIRM:
@@ -5583,6 +5588,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
         // Ensure observe happens in systemReady() since we need
         // LineageHardwareService to be up and running
         mSettingsObserver.observe();
+        mArielUtils = new ArielUtils(mContext);
 
         readCameraLensCoverState();
         updateUiMode();

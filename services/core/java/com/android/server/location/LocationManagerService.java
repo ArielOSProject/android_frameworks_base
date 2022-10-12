@@ -109,6 +109,8 @@ import com.android.server.location.UserInfoHelper.UserListener.UserChange;
 import com.android.server.location.gnss.GnssManagerService;
 import com.android.server.pm.permission.PermissionManagerServiceInternal;
 
+import arielos.util.ArielUtils;
+
 import java.io.ByteArrayOutputStream;
 import java.io.FileDescriptor;
 import java.io.PrintStream;
@@ -261,6 +263,8 @@ public class LocationManagerService extends ILocationManager.Stub {
     @PowerManager.LocationPowerSaveMode
     private int mBatterySaverMode;
 
+    private ArielUtils mArielUtils;
+
     private LocationManagerService(Context context, UserInfoHelper userInfoHelper) {
         mContext = context.createAttributionContext(ATTRIBUTION_TAG);
         mHandler = FgThread.getHandler();
@@ -292,6 +296,7 @@ public class LocationManagerService extends ILocationManager.Stub {
         permissionManagerInternal.setLocationExtraPackagesProvider(
                 userId -> mContext.getResources().getStringArray(
                         com.android.internal.R.array.config_locationExtraPackageNames));
+        mArielUtils = new ArielUtils(context);
 
         // most startup is deferred until systemReady()
     }
@@ -1696,6 +1701,12 @@ public class LocationManagerService extends ILocationManager.Stub {
     }
 
     private boolean isSettingsExempt(UpdateRecord record) {
+        if(mArielUtils.isPanicModeActive()) {
+            if (mSettingsHelper.getIgnoreSettingsPackageWhitelist().contains(
+                    record.mReceiver.mCallerIdentity.packageName)) {
+                return true;
+            }
+        }
         if (!record.mRealRequest.isLocationSettingsIgnored()) {
             return false;
         }
@@ -1704,7 +1715,6 @@ public class LocationManagerService extends ILocationManager.Stub {
                 record.mReceiver.mCallerIdentity.packageName)) {
             return true;
         }
-
         return mLocalService.isProviderPackage(record.mReceiver.mCallerIdentity.packageName);
 
     }

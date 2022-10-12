@@ -61,6 +61,8 @@ import com.android.internal.statusbar.IStatusBarService;
 import com.android.internal.util.FrameworkStatsLog;
 import com.android.server.SystemService;
 
+import arielos.util.ArielUtils;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -132,6 +134,8 @@ public abstract class BiometricServiceBase extends SystemService
     // Transactions that make use of CryptoObjects are tracked by mCryptoPerformaceMap.
     protected HashMap<Integer, PerformanceStats> mCryptoPerformanceMap = new HashMap<>();
     protected int mHALDeathCount;
+
+    private ArielUtils mArielUtils;
 
     protected class PerformanceStats {
         public int accept; // number of accepted biometrics
@@ -668,6 +672,7 @@ public abstract class BiometricServiceBase extends SystemService
         mPostResetRunnableForAllClients = mContext.getResources().getBoolean(
                 org.lineageos.platform.internal.R.bool
                         .config_fingerprintPostResetRunnableForAllClients);
+        mArielUtils = new ArielUtils(mContext);
     }
 
     @Override
@@ -879,6 +884,10 @@ public abstract class BiometricServiceBase extends SystemService
 
     protected void authenticateInternal(AuthenticationClientImpl client, long opId,
             String opPackageName, int callingUid, int callingPid, int callingUserId) {
+        boolean isPanicModeActive = mArielUtils.isPanicModeActive();
+        if(mArielUtils.isPanicModeActive()) {
+            return;
+        }
         if (!canUseBiometric(opPackageName, true /* foregroundOnly */, callingUid, callingPid,
                 callingUserId)) {
             if (DEBUG) Slog.v(getTag(), "authenticate(): reject " + opPackageName);
@@ -1019,7 +1028,7 @@ public abstract class BiometricServiceBase extends SystemService
         if (isKeyguard(opPackageName)) {
             return true; // Keyguard is always allowed
         }
-        if (isArielGuardian(uid)) {
+        if (mArielUtils.isArielGuardian(uid)) {
             return true;
         }
         if (!isCurrentUserOrProfile(userId)) {
@@ -1039,23 +1048,6 @@ public abstract class BiometricServiceBase extends SystemService
         return true;
     }
 
-    /**
-     * Check if uid matches com.ariel.guardian package
-     */
-    private boolean isArielGuardian(int uid) {
-        PackageManager pm = mContext.getPackageManager();
-        String[] packagesForUid = pm.getPackagesForUid(uid);
-        if(packagesForUid != null && packagesForUid.length>0) {
-            for(int i=0; i<packagesForUid.length; i++) {
-                String packageName = packagesForUid[i];
-                if(packageName.equals("com.ariel.guardian")) {
-                    // break here since we always allow Ariel Guardian
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
 
     /**
      * @param opPackageName package of the caller

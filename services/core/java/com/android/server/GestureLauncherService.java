@@ -52,6 +52,9 @@ import com.android.server.LocalServices;
 import com.android.server.statusbar.StatusBarManagerInternal;
 import com.android.server.wm.WindowManagerInternal;
 
+import arielos.providers.ArielSettings;
+import arielos.util.ArielUtils;
+
 /**
  * The service that listens for gestures detected in sensor firmware and starts the intent
  * accordingly.
@@ -68,7 +71,10 @@ public class GestureLauncherService extends SystemService {
      * Time in milliseconds in which the power button must be pressed twice so it will be considered
      * as a camera launch.
      */
-    @VisibleForTesting static final long CAMERA_POWER_DOUBLE_TAP_MAX_TIME_MS = 300;
+    // Ariel mod: original value was 300
+    @VisibleForTesting static final long CAMERA_POWER_DOUBLE_TAP_MAX_TIME_MS = 400;
+
+    static final long ARIEL_PANIC_MODE_TAP_INTERVAL_MS = 300;
 
     /**
      * Interval in milliseconds in which the power button must be depressed in succession to be
@@ -76,7 +82,7 @@ public class GestureLauncherService extends SystemService {
      * the camera launch gesture, because the purpose of this threshold is to measure the
      * frequency of consecutive taps, for evaluation for future gestures.
      */
-    @VisibleForTesting static final long POWER_SHORT_TAP_SEQUENCE_MAX_INTERVAL_MS = 500;
+    @VisibleForTesting static final long POWER_SHORT_TAP_SEQUENCE_MAX_INTERVAL_MS = 600;
 
     /** The listener that receives the gesture event. */
     private final GestureEventListener mGestureListener = new GestureEventListener();
@@ -134,6 +140,8 @@ public class GestureLauncherService extends SystemService {
     private int mPowerButtonConsecutiveTaps;
     private final UiEventLogger mUiEventLogger;
 
+    private ArielUtils mArielUtils;
+
     @VisibleForTesting
     public enum GestureLauncherEvent implements UiEventLogger.UiEventEnum {
         @UiEvent(doc = "The user lifted the device just the right way to launch the camera.")
@@ -167,6 +175,7 @@ public class GestureLauncherService extends SystemService {
         mContext = context;
         mMetricsLogger = metricsLogger;
         mUiEventLogger = uiEventLogger;
+        mArielUtils = new ArielUtils(mContext);
     }
 
     public void onStart() {
@@ -394,16 +403,26 @@ public class GestureLauncherService extends SystemService {
         boolean launched = false;
         boolean intercept = false;
         long powerTapInterval;
+        boolean panicModeLaunched = false;
         synchronized (this) {
             powerTapInterval = event.getEventTime() - mLastPowerDown;
-            if (mCameraDoubleTapPowerEnabled
+            if (powerTapInterval < ARIEL_PANIC_MODE_TAP_INTERVAL_MS) {
+                // count as panic mode tap, rappid pressing
+                Slog.i(TAG, "Inside the panic mode tap check block");
+                panicModeLaunched = true;
+                intercept = true;
+                mPowerButtonConsecutiveTaps++;
+            } else if (mCameraDoubleTapPowerEnabled
                     && powerTapInterval < CAMERA_POWER_DOUBLE_TAP_MAX_TIME_MS) {
+                Slog.i(TAG, "Inside the camera double tap check block");
                 launched = true;
                 intercept = interactive;
                 mPowerButtonConsecutiveTaps++;
             } else if (powerTapInterval < POWER_SHORT_TAP_SEQUENCE_MAX_INTERVAL_MS) {
+                Slog.i(TAG, "Inside the block with POWER_SHORT_TAP_SEQUENCE_MAX_INTERVAL_MS condition");
                 mPowerButtonConsecutiveTaps++;
             } else {
+                Slog.i(TAG, "Inside the block that resets power press count to 1");
                 mPowerButtonConsecutiveTaps = 1;
             }
             mLastPowerDown = event.getEventTime();
@@ -423,10 +442,17 @@ public class GestureLauncherService extends SystemService {
                 mUiEventLogger.log(GestureLauncherEvent.GESTURE_CAMERA_DOUBLE_TAP_POWER);
             }
         }
+        if(panicModeLaunched && mPowerButtonConsecutiveTaps >= 4) {
+            if(!mArielUtils.isPanicModeActive()) {
+                Slog.i(TAG, "!!! ACTIVATE PANIC MODE !!!");
+                ArielSettings.Secure.putInt(mContext.getContentResolver(), 
+                    ArielSettings.Secure.PANIC_MODE, 1);        
+            }
+        }
         mMetricsLogger.histogram("power_consecutive_short_tap_count", mPowerButtonConsecutiveTaps);
         mMetricsLogger.histogram("power_double_tap_interval", (int) powerTapInterval);
-        outLaunched.value = launched;
-        return intercept && launched;
+        outLaunched.value = launched || panicModeLaunched;
+        return intercept && (launched || panicModeLaunched);
     }
 
     /**
