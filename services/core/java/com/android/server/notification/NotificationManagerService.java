@@ -4523,7 +4523,16 @@ public class NotificationManagerService extends SystemService {
             }
             enforcePolicyAccess(Binder.getCallingUid(), "addAutomaticZenRule");
 
-            return mZenModeHelper.addAutomaticZenRule(pkg, automaticZenRule,
+            // If the calling app is the system (from any user), take the package name from the
+            // rule's owner rather than from the caller's package.
+            String rulePkg = pkg;
+            if (isCallingAppIdSystem()) {
+                if (automaticZenRule.getOwner() != null) {
+                    rulePkg = automaticZenRule.getOwner().getPackageName();
+                }
+            }
+
+            return mZenModeHelper.addAutomaticZenRule(rulePkg, automaticZenRule,
                     "addAutomaticZenRule");
         }
 
@@ -7075,7 +7084,8 @@ public class NotificationManagerService extends SystemService {
                 && (record.getSuppressedVisualEffects() & SUPPRESSED_EFFECT_STATUS_BAR) != 0;
         if (!record.isUpdate
                 && record.getImportance() > IMPORTANCE_MIN
-                && !suppressedByDnd) {
+                && !suppressedByDnd
+                && isNotificationForCurrentUser(record)) {
             sendAccessibilityEvent(record);
             sentAccessibilityEvent = true;
         }
@@ -8728,6 +8738,12 @@ public class NotificationManagerService extends SystemService {
     protected boolean isCallingUidSystem() {
         final int uid = Binder.getCallingUid();
         return uid == Process.SYSTEM_UID;
+    }
+
+    protected boolean isCallingAppIdSystem() {
+        final int uid = Binder.getCallingUid();
+        final int appid = UserHandle.getAppId(uid);
+        return appid == Process.SYSTEM_UID;
     }
 
     protected boolean isUidSystemOrPhone(int uid) {
