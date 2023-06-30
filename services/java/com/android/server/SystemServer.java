@@ -2664,6 +2664,27 @@ public final class SystemServer implements Dumpable {
             reportWtf("Making " + externalServer + " ready", e);
         }
 
+        // Ariel Services
+        String arielExternalServer = context.getResources().getString(
+                com.arielos.platform.internal.R.string.config_externalArielSystemServer);
+
+        final Class<?> arielServerClazz;
+        try {
+            arielServerClazz = Class.forName(arielExternalServer);
+            final Constructor<?> constructor = arielServerClazz.getDeclaredConstructor(Context.class);
+            constructor.setAccessible(true);
+            final Object baseObject = constructor.newInstance(mSystemContext);
+            final Method method = baseObject.getClass().getDeclaredMethod("run");
+            method.setAccessible(true);
+            method.invoke(baseObject);
+        } catch (ClassNotFoundException
+                | IllegalAccessException
+                | InvocationTargetException
+                | InstantiationException
+                | NoSuchMethodException e) {
+            reportWtf("Making " + arielExternalServer + " ready", e);
+        }
+
         // It is now time to start up the app processes...
 
         t.traceBegin("MakeLockSettingsServiceReady");

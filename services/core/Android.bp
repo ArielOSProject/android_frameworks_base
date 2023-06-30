@@ -133,6 +133,7 @@ java_library_static {
         "service-permission.stubs.system_server",
         "service-sdksandbox.stubs.system_server",
         "org.lineageos.platform.internal",
+        "com.arielos.platform.internal",
     ],
 
     required: [
