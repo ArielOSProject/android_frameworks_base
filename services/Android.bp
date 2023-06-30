@@ -175,6 +175,7 @@ java_library {
         "framework-tethering.stubs.module_lib",
         "service-art.stubs.system_server",
         "org.lineageos.platform.internal",
+        "com.arielos.platform.internal",
     ],
 
     // Uncomment to enable output of certain warnings (deprecated, unchecked)
