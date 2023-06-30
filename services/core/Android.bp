@@ -168,6 +168,7 @@ java_library_static {
         "service-sdksandbox.stubs.system_server",
         "device_policy_aconfig_flags_lib",
         "org.lineageos.platform.internal",
+        "com.arielos.platform.internal",
     ],
     plugins: ["ImmutabilityAnnotationProcessor"],
 

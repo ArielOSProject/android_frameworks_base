@@ -324,6 +324,7 @@ system_java_library {
         "service-rkp.stubs.system_server",
         "service-sdksandbox.stubs.system_server",
         "org.lineageos.platform.internal",
+        "com.arielos.platform.internal",
     ],
 
     soong_config_variables: {
