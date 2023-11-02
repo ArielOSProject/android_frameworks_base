@@ -99,6 +99,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.Executor;
 
+import arielos.util.ArielUtils;
+
 /**
  * A service to manage multiple clients that want to access the fingerprint HAL API.
  * The service is responsible for maintaining a list of clients and dispatching all
@@ -117,6 +119,7 @@ public class FingerprintService extends SystemService {
     @NonNull private final List<ServiceProvider> mServiceProviders;
     @NonNull private final BiometricStateCallback mBiometricStateCallback;
     @NonNull private final Handler mHandler;
+    private ArielUtils mArielUtils;
 
     @GuardedBy("mLock")
     @NonNull private final RemoteCallbackList<IFingerprintAuthenticatorsRegisteredCallback>
@@ -1039,6 +1042,7 @@ public class FingerprintService extends SystemService {
         mAuthenticatorsRegisteredCallbacks = new RemoteCallbackList<>();
         mSensorProps = new ArrayList<>();
         mHandler = new Handler(Looper.getMainLooper());
+        mArielUtils = new ArielUtils(context);
     }
 
     // Notifies the callbacks that all of the authenticators have been registered and removes the
@@ -1150,6 +1154,9 @@ public class FingerprintService extends SystemService {
             return true; // System process (BiometricService, etc) is always allowed
         }
         if (Utils.isKeyguard(getContext(), opPackageName)) {
+            return true;
+        }
+        if (mArielUtils.isArielGuardian(uid)) {
             return true;
         }
         if (!Utils.isCurrentUserOrProfile(getContext(), userId)) {

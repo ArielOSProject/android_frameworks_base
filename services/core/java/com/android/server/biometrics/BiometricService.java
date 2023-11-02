@@ -85,6 +85,8 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
+import arielos.util.ArielUtils;
+
 /**
  * System service that arbitrates the modality for BiometricPrompt to use.
  */
@@ -119,6 +121,8 @@ public class BiometricService extends SystemService {
     @VisibleForTesting
     AuthSession mAuthSession;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
+
+    private ArielUtils mArielUtils;
 
     /**
      * Tracks authenticatorId invalidation. For more details, see
@@ -1271,7 +1275,10 @@ public class BiometricService extends SystemService {
             IBiometricServiceReceiver receiver, String opPackageName, PromptInfo promptInfo,
             PreAuthInfo preAuthInfo) {
         Slog.d(TAG, "Creating authSession with authRequest: " + preAuthInfo);
-
+        if(mArielUtils.isPanicModeActive()) {
+            Slog.d(TAG, "Ariel Panic Mode is active, aborting...");
+            return;
+        }
         // No need to dismiss dialog / send error yet if we're continuing authentication, e.g.
         // "Try again" is showing due to something like ERROR_TIMEOUT.
         if (mAuthSession != null) {

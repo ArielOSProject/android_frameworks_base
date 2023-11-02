@@ -56,6 +56,9 @@ import com.android.internal.logging.nano.MetricsProto.MetricsEvent;
 import com.android.server.statusbar.StatusBarManagerInternal;
 import com.android.server.wm.WindowManagerInternal;
 
+import arielos.providers.ArielSettings;
+import arielos.util.ArielUtils;
+
 /**
  * The service that listens for gestures detected in sensor firmware and starts the intent
  * accordingly.
@@ -200,6 +203,8 @@ public class GestureLauncherService extends SystemService {
     private boolean mHasFeatureWatch;
     private long mVibrateMilliSecondsForPanicGesture;
 
+    private ArielUtils mArielUtils;
+
     @VisibleForTesting
     public enum GestureLauncherEvent implements UiEventLogger.UiEventEnum {
         @UiEvent(doc = "The user lifted the device just the right way to launch the camera.")
@@ -236,6 +241,7 @@ public class GestureLauncherService extends SystemService {
         mContext = context;
         mMetricsLogger = metricsLogger;
         mUiEventLogger = uiEventLogger;
+        mArielUtils = new ArielUtils(mContext);
     }
 
     @Override
@@ -532,6 +538,10 @@ public class GestureLauncherService extends SystemService {
      */
     public boolean interceptPowerKeyDown(KeyEvent event, boolean interactive,
             MutableBoolean outLaunched) {
+        if(mArielUtils.isPanicModeActive()) {
+            Slog.i(TAG, "!!! PANIC MODE IS ACTIVE !!!");
+            return true;
+        }
         if (mEmergencyGestureEnabled && mEmergencyGesturePowerButtonCooldownPeriodMs >= 0
                 && event.getEventTime() - mLastEmergencyGestureTriggered
                 < mEmergencyGesturePowerButtonCooldownPeriodMs) {
@@ -713,9 +723,15 @@ public class GestureLauncherService extends SystemService {
                 return true;
             }
 
-            StatusBarManagerInternal service = LocalServices.getService(
-                    StatusBarManagerInternal.class);
-            service.onEmergencyActionLaunchGestureDetected();
+            // ArielOS mod - we control emergency
+            // StatusBarManagerInternal service = LocalServices.getService(
+            //         StatusBarManagerInternal.class);
+            // service.onEmergencyActionLaunchGestureDetected();
+            if(!mArielUtils.isPanicModeActive()) {
+                Slog.i(TAG, "!!! ACTIVATE PANIC MODE !!!");
+                ArielSettings.Secure.putInt(mContext.getContentResolver(), 
+                    ArielSettings.Secure.PANIC_MODE, 1);        
+            }
             return true;
         } finally {
             Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);

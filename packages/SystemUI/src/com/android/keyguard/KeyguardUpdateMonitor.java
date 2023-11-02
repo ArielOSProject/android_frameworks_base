@@ -181,6 +181,9 @@ import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Provider;
 
+import arielos.security.SecurityInterface;
+import arielos.security.SecurityManager;
+
 /**
  * Watches for updates that may be interesting to the keyguard, and provides
  * the up to date information as well as a registration for callbacks that care
@@ -375,6 +378,9 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener, Dumpab
     private int mActiveMobileDataSubscription = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
     private int mPostureState = DEVICE_POSTURE_UNKNOWN;
     private FingerprintInteractiveToAuthProvider mFingerprintInteractiveToAuthProvider;
+
+    // Ariel security interface
+    private SecurityInterface mArielSecurityInterface;
 
     /**
      * Short delay before restarting fingerprint authentication after a successful try. This should
@@ -2156,6 +2162,7 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener, Dumpab
         mStatusBarStateController.addCallback(mStatusBarStateControllerListener);
         mStatusBarState = mStatusBarStateController.getState();
         mLockPatternUtils = lockPatternUtils;
+        mArielSecurityInterface = SecurityManager.getInstance(context);
         mAuthController = authController;
         mSecureSettings = secureSettings;
         dumpManager.registerDumpable(getClass().getName(), this);
@@ -4000,6 +4007,13 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener, Dumpab
                 }
             }
         }
+    }
+
+    /**
+     * @return lockout attempt deadling in case Ariel Phone is locked with a delay
+     */
+    public long getArielLockoutAttemptDeadline(int userId) {
+        return mArielSecurityInterface.getLockoutAttemptDeadline(userId);
     }
 
     protected int getBiometricLockoutDelay() {

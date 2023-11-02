@@ -250,6 +250,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import arielos.util.ArielUtils;
+
 /**
  * WindowManagerPolicy implementation for the Android phone UI.  This
  * introduces a new method suffix, Lp, for an internal lock of the
@@ -747,6 +749,8 @@ public class PhoneWindowManager implements WindowManagerPolicy {
     private boolean mLongSwipeDown;
 
     private LineageHardwareManager mLineageHardware;
+
+    private ArielUtils mArielUtils;
 
     private class PolicyHandler extends Handler {
         @Override
@@ -1411,9 +1415,11 @@ public class PhoneWindowManager implements WindowManagerPolicy {
                 break;
             case LONG_PRESS_POWER_GLOBAL_ACTIONS:
                 mPowerKeyHandled = true;
-                performHapticFeedback(HapticFeedbackConstants.LONG_PRESS_POWER_BUTTON, false,
+                if(!mArielUtils.isPanicModeActive()) {
+                    performHapticFeedback(HapticFeedbackConstants.LONG_PRESS_POWER_BUTTON, false,
                         "Power - Long Press - Global Actions");
-                showGlobalActions();
+                    showGlobalActions();
+                }
                 break;
             case LONG_PRESS_POWER_SHUT_OFF:
             case LONG_PRESS_POWER_SHUT_OFF_NO_CONFIRM:
@@ -5848,6 +5854,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
         // Ensure observe happens in systemReady() since we need
         // LineageHardwareService to be up and running
         mSettingsObserver.observe();
+        mArielUtils = new ArielUtils(mContext);
 
         readCameraLensCoverState();
         updateUiMode();

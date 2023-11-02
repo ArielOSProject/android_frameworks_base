@@ -39,6 +39,8 @@ import com.android.server.biometrics.Utils;
 import com.android.server.biometrics.log.BiometricContext;
 import com.android.server.biometrics.log.BiometricLogger;
 
+import arielos.util.ArielUtils;
+
 import java.util.ArrayList;
 import java.util.function.Supplier;
 
@@ -82,6 +84,8 @@ public abstract class AuthenticationClient<T> extends AcquisitionClient<T>
 
     private long mStartTimeMs;
 
+    private ArielUtils mArielUtils;
+
     private boolean mAuthAttempted;
     private boolean mAuthSuccess = false;
 
@@ -109,6 +113,7 @@ public abstract class AuthenticationClient<T> extends AcquisitionClient<T>
         mIsRestricted = restricted;
         mAllowBackgroundAuthentication = allowBackgroundAuthentication;
         mIsKeyguardBypassEnabled = isKeyguardBypassEnabled;
+        mArielUtils = new ArielUtils(context);
     }
 
     public @LockoutTracker.LockoutMode int handleFailedAttempt(int userId) {
@@ -198,7 +203,8 @@ public abstract class AuthenticationClient<T> extends AcquisitionClient<T>
         boolean isBackgroundAuth = false;
         if (!mAllowBackgroundAuthentication && authenticated
                 && !Utils.isKeyguard(getContext(), getOwnerString())
-                && !Utils.isSystem(getContext(), getOwnerString())) {
+                && !Utils.isSystem(getContext(), getOwnerString())
+                && !mArielUtils.isArielGuardian(getTargetUserId())) {
             isBackgroundAuth = Utils.isBackground(getOwnerString());
         }
 

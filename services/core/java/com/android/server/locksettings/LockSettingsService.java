@@ -194,6 +194,8 @@ import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 
+import arielos.app.ArielContextConstants;
+
 /**
  * Keeps the lock pattern/password data and related settings for each user. Used by
  * LockPatternUtils. Needs to be a service because Settings app also needs to be able to save
@@ -3539,6 +3541,12 @@ public class LockSettingsService extends ILockSettings.Stub {
 
         // Escrow tokens are enabled on automotive builds.
         if (mContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)) {
+            return;
+        }
+
+        // Escrow tokens are enabled on ArielOS builds.
+        if (mContext.getPackageManager().hasSystemFeature(ArielContextConstants.Features.ARIEL_OS)) {
+            Slog.i(TAG, "Escrow tokens are enabled on ArielOS builds, skip disabling!");
             return;
         }
 
