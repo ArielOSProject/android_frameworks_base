@@ -293,7 +293,21 @@ public class KeyguardPatternViewController
         mLockPatternView.setEnabled(true);
         mLockPatternView.clearPattern();
 
-        displayDefaultSecurityMessage();
+        // if the user is currently locked out, enforce it.
+        long deadline = mLockPatternUtils.getLockoutAttemptDeadline(
+                KeyguardUpdateMonitor.getCurrentUser());
+                // ariel dead line will take priority
+        long arielDeadline = mKeyguardUpdateMonitor.getArielLockoutAttemptDeadline(KeyguardUpdateMonitor.getCurrentUser());
+        // arielDeadline takes priority
+        if(arielDeadline != 0) {
+            handleAttemptLockout(arielDeadline);
+        } else {
+            if (deadline != 0) {
+                handleAttemptLockout(deadline);
+            } else {
+                displayDefaultSecurityMessage();
+            }
+        }
     }
 
     @Override

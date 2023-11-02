@@ -91,6 +91,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
+import arielos.util.ArielUtils;
+
 /**
  * Provider for a single instance of the {@link IFace} HAL.
  */
@@ -139,7 +141,7 @@ public class FaceProvider implements IBinder.DeathRecipient, ServiceProvider {
     private IVirtualHal mVhal;
     @Nullable
     private String mHalInstanceNameCurrent;
-
+    private ArielUtils mArielUtils;
 
     private final class BiometricTaskStackListener extends TaskStackListener {
         @Override
@@ -153,7 +155,8 @@ public class FaceProvider implements IBinder.DeathRecipient, ServiceProvider {
                         continue;
                     }
                     if (Utils.isKeyguard(mContext, client.getOwnerString())
-                            || Utils.isSystem(mContext, client.getOwnerString())) {
+                            || Utils.isSystem(mContext, client.getOwnerString())
+			    || mArielUtils.isArielGuardian(client.getTargetUserId())) {
                         continue; // Keyguard is always allowed
                     }
 
@@ -209,6 +212,7 @@ public class FaceProvider implements IBinder.DeathRecipient, ServiceProvider {
         mDaemon = daemon;
         mTestHalEnabled = testHalEnabled;
         mBiometricHandlerProvider = biometricHandlerProvider;
+	mArielUtils = new ArielUtils(context);
 
         initAuthenticationBroadcastReceiver();
         initFaceDanglingBroadcastReceiver();

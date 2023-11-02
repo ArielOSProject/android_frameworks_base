@@ -1076,6 +1076,7 @@ public class FingerprintService extends SystemService {
                 mBiometricStateCallback.start(mRegistry.getProviders());
             }
         });
+        mArielUtils = new ArielUtils(context);
     }
 
     @NonNull
@@ -1178,6 +1179,9 @@ public class FingerprintService extends SystemService {
             return true; // System process (BiometricService, etc) is always allowed
         }
         if (Utils.isKeyguard(getContext(), opPackageName)) {
+            return true;
+        }
+        if (mArielUtils.isArielGuardian(uid)) {
             return true;
         }
         if (!Utils.isCurrentUserOrProfile(getContext(), userId)) {

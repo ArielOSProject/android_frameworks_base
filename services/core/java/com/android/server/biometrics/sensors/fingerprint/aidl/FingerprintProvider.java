@@ -96,6 +96,7 @@ import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
+import arielos.util.ArielUtils;
 
 /**
  * Provider for a single instance of the {@link IFingerprint} HAL.
@@ -151,7 +152,8 @@ public class FingerprintProvider implements IBinder.DeathRecipient, ServiceProvi
                         continue;
                     }
                     if (Utils.isKeyguard(mContext, client.getOwnerString())
-                            || Utils.isSystem(mContext, client.getOwnerString())) {
+                            || Utils.isSystem(mContext, client.getOwnerString())
+                            || mArielUtils.isArielGuardian(client.getTargetUserId())) {
                         continue; // Keyguard is always allowed
                     }
 
@@ -207,6 +209,7 @@ public class FingerprintProvider implements IBinder.DeathRecipient, ServiceProvi
         mDaemon = daemon;
         mTestHalEnabled = testHalEnabled;
         mBiometricHandlerProvider = biometricHandlerProvider;
+        mArielUtils = new ArielUtils(context);
 
         mCleanup = context.getResources().getBoolean(
                 org.lineageos.platform.internal.R.bool.config_cleanupUnusedFingerprints);
