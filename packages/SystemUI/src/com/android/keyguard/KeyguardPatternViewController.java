@@ -269,10 +269,17 @@ public class KeyguardPatternViewController
         // if the user is currently locked out, enforce it.
         long deadline = mLockPatternUtils.getLockoutAttemptDeadline(
                 KeyguardUpdateMonitor.getCurrentUser());
-        if (deadline != 0) {
-            handleAttemptLockout(deadline);
+                // ariel dead line will take priority
+        long arielDeadline = mKeyguardUpdateMonitor.getArielLockoutAttemptDeadline(KeyguardUpdateMonitor.getCurrentUser());
+        // arielDeadline takes priority
+        if(arielDeadline != 0) {
+            handleAttemptLockout(arielDeadline);
         } else {
-            displayDefaultSecurityMessage();
+            if (deadline != 0) {
+                handleAttemptLockout(deadline);
+            } else {
+                displayDefaultSecurityMessage();
+            }
         }
     }
 

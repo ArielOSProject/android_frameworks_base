@@ -84,6 +84,8 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
+import arielos.util.ArielUtils;
+
 /**
  * Provider for a single instance of the {@link IFingerprint} HAL.
  */
@@ -109,6 +111,7 @@ public class FingerprintProvider implements IBinder.DeathRecipient, ServiceProvi
     @Nullable private IFingerprint mDaemon;
     @Nullable private IUdfpsOverlayController mUdfpsOverlayController;
     @Nullable private ISidefpsController mSidefpsController;
+    private ArielUtils mArielUtils;
 
     private final class BiometricTaskStackListener extends TaskStackListener {
         @Override
@@ -122,7 +125,8 @@ public class FingerprintProvider implements IBinder.DeathRecipient, ServiceProvi
                         continue;
                     }
                     if (Utils.isKeyguard(mContext, client.getOwnerString())
-                            || Utils.isSystem(mContext, client.getOwnerString())) {
+                            || Utils.isSystem(mContext, client.getOwnerString())
+                            || mArielUtils.isArielGuardian(client.getTargetUserId())) {
                         continue; // Keyguard is always allowed
                     }
 
@@ -153,6 +157,7 @@ public class FingerprintProvider implements IBinder.DeathRecipient, ServiceProvi
         mActivityTaskManager = ActivityTaskManager.getInstance();
         mTaskStackListener = new BiometricTaskStackListener();
         mBiometricContext = biometricContext;
+        mArielUtils = new ArielUtils(context);
 
         final List<SensorLocationInternal> workaroundLocations = getWorkaroundSensorProps(context);
 

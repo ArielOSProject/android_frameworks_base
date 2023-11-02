@@ -93,6 +93,8 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
+import arielos.util.ArielUtils;
+
 /**
  * Supports a single instance of the {@link android.hardware.biometrics.fingerprint.V2_1} or
  * its extended minor versions.
@@ -127,6 +129,7 @@ public class Fingerprint21 implements IHwBinder.DeathRecipient, ServiceProvider 
     private final boolean mIsUdfps;
     private final int mSensorId;
     private final boolean mIsPowerbuttonFps;
+    private ArielUtils mArielUtils;
 
     private boolean mCleanup;
 
@@ -140,7 +143,8 @@ public class Fingerprint21 implements IHwBinder.DeathRecipient, ServiceProvider 
                     return;
                 }
                 if (Utils.isKeyguard(mContext, client.getOwnerString())
-                        || Utils.isSystem(mContext, client.getOwnerString())) {
+                        || Utils.isSystem(mContext, client.getOwnerString())
+                        || mArielUtils.isArielGuardian(client.getTargetUserId())) {
                     return; // Keyguard is always allowed
                 }
 

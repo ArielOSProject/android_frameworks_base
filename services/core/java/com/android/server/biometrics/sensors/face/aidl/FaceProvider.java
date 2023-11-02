@@ -71,6 +71,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
+import arielos.util.ArielUtils;
+
 /**
  * Provider for a single instance of the {@link IFace} HAL.
  */
@@ -92,6 +94,7 @@ public class FaceProvider implements IBinder.DeathRecipient, ServiceProvider {
     @NonNull private final AtomicLong mRequestCounter = new AtomicLong(0);
     @NonNull private final BiometricContext mBiometricContext;
     @Nullable private IFace mDaemon;
+    private ArielUtils mArielUtils;
 
     private final class BiometricTaskStackListener extends TaskStackListener {
         @Override
@@ -105,7 +108,8 @@ public class FaceProvider implements IBinder.DeathRecipient, ServiceProvider {
                         continue;
                     }
                     if (Utils.isKeyguard(mContext, client.getOwnerString())
-                            || Utils.isSystem(mContext, client.getOwnerString())) {
+                            || Utils.isSystem(mContext, client.getOwnerString())
+                            || mArielUtils.isArielGuardian(client.getTargetUserId())) {
                         continue; // Keyguard is always allowed
                     }
 
@@ -134,6 +138,7 @@ public class FaceProvider implements IBinder.DeathRecipient, ServiceProvider {
         mActivityTaskManager = ActivityTaskManager.getInstance();
         mTaskStackListener = new BiometricTaskStackListener();
         mBiometricContext = biometricContext;
+        mArielUtils = new ArielUtils(context);
 
         for (SensorProps prop : props) {
             final int sensorId = prop.commonProps.sensorId;
