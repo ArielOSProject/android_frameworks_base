@@ -491,7 +491,7 @@ public class IntentFirewall {
                     throw new XmlPullParserException("Invalid component name: " + componentStr);
                 }
                 else{
-                    Log.i(TAG, "Component package: "+componentName.getPackageName()+", class name: "+componentName.getClassName());
+                    Slog.i(TAG, "Component package: "+componentName.getPackageName()+", class name: "+componentName.getClassName());
                 }
 
                 mComponentFilters.add(componentName);
@@ -502,7 +502,7 @@ public class IntentFirewall {
                             parser, null);
                 }
 
-                Log.i(TAG, "Package name: "+packageString);
+                Slog.i(TAG, "Package name: "+packageString);
 
                 mPackageFilters.add(packageString);
             } else {
