@@ -31,6 +31,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
 import android.os.RemoteException;
+import android.os.UserHandle;
 import android.util.ArrayMap;
 import android.util.Slog;
 import android.util.Xml;
@@ -142,14 +143,22 @@ public class IntentFirewall {
      */
     public boolean checkStartActivity(Intent intent, int callerUid, int callerPid,
             String resolvedType, ApplicationInfo resolvedApp) {
-        return checkIntent(mActivityResolver, intent.getComponent(), TYPE_ACTIVITY, intent,
+        boolean allow = checkIntent(mActivityResolver, intent.getComponent(), TYPE_ACTIVITY, intent,
                 callerUid, callerPid, resolvedType, resolvedApp.uid);
+        if(!allow){
+            mAms.removeTasksByPackageNameLocked(intent.getComponent().getPackageName(), UserHandle.USER_OWNER);
+        }
+        return allow;
     }
 
     public boolean checkService(ComponentName resolvedService, Intent intent, int callerUid,
             int callerPid, String resolvedType, ApplicationInfo resolvedApp) {
-        return checkIntent(mServiceResolver, resolvedService, TYPE_SERVICE, intent, callerUid,
+        boolean allow = checkIntent(mServiceResolver, resolvedService, TYPE_SERVICE, intent, callerUid,
                 callerPid, resolvedType, resolvedApp.uid);
+        if(!allow){
+            mAms.removeTasksByPackageNameLocked(intent.getComponent().getPackageName(), UserHandle.USER_OWNER);
+        }
+        return allow;
     }
 
     public boolean checkBroadcast(Intent intent, int callerUid, int callerPid,
@@ -173,6 +182,10 @@ public class IntentFirewall {
             candidateRules = new ArrayList<Rule>();
         }
         resolver.queryByComponent(resolvedComponent, candidateRules);
+        // find package rules
+        if(resolvedComponent != null) {
+            resolver.queryByPackage(resolvedComponent.getPackageName(), candidateRules);
+        }
 
         // For the second pass, try to match the potentially more specific conditions in each
         // rule against the intent
@@ -341,6 +354,9 @@ public class IntentFirewall {
                 int ruleType = -1;
 
                 String tagName = parser.getName();
+
+                Slog.i(TAG, "Reading tag: "+tagName);
+
                 if (tagName.equals(TAG_ACTIVITY)) {
                     ruleType = TYPE_ACTIVITY;
                 } else if (tagName.equals(TAG_BROADCAST)) {
@@ -348,6 +364,8 @@ public class IntentFirewall {
                 } else if (tagName.equals(TAG_SERVICE)) {
                     ruleType = TYPE_SERVICE;
                 }
+
+                Slog.i(TAG, "Rule type: "+ruleType);
 
                 if (ruleType != -1) {
                     Rule rule = new Rule();
@@ -394,6 +412,9 @@ public class IntentFirewall {
                 for (int i=0; i<rule.getComponentFilterCount(); i++) {
                     resolver.addComponentFilter(rule.getComponentFilter(i), rule);
                 }
+                for (int i=0; i<rule.getPackageFilterCount(); i++) {
+                    resolver.addPackageFilter(rule.getPackageFilter(i), rule);
+                }
             }
         }
     }
@@ -430,6 +451,7 @@ public class IntentFirewall {
     private static class Rule extends AndFilter {
         private static final String TAG_INTENT_FILTER = "intent-filter";
         private static final String TAG_COMPONENT_FILTER = "component-filter";
+        private static final String TAG_PACKAGE_FILTER = "package-filter";
         private static final String ATTR_NAME = "name";
 
         private static final String ATTR_BLOCK = "block";
@@ -438,6 +460,7 @@ public class IntentFirewall {
         private final ArrayList<FirewallIntentFilter> mIntentFilters =
                 new ArrayList<FirewallIntentFilter>(1);
         private final ArrayList<ComponentName> mComponentFilters = new ArrayList<ComponentName>(0);
+        private final ArrayList<String> mPackageFilters = new ArrayList<>();
         private boolean block;
         private boolean log;
 
@@ -471,6 +494,16 @@ public class IntentFirewall {
                 }
 
                 mComponentFilters.add(componentName);
+            } else if (currentTag.equals(TAG_PACKAGE_FILTER)) {
+                String packageString = parser.getAttributeValue(null, ATTR_NAME);
+                if (packageString == null) {
+                    throw new XmlPullParserException("Package name must be specified.",
+                            parser, null);
+                }
+
+                Slog.i(TAG, "Package name: "+packageString);
+
+                mPackageFilters.add(packageString);
             } else {
                 super.readChild(parser);
             }
@@ -491,6 +524,15 @@ public class IntentFirewall {
         public ComponentName getComponentFilter(int index) {
             return mComponentFilters.get(index);
         }
+
+        public int getPackageFilterCount() {
+            return mPackageFilters.size();
+        }
+
+        public String getPackageFilter(int index) {
+            return mPackageFilters.get(index);
+        }
+
         public boolean getBlock() {
             return block;
         }
@@ -555,8 +597,24 @@ public class IntentFirewall {
             mRulesByComponent.put(componentName, rules);
         }
 
+        public void addPackageFilter(String packageName, Rule rule) {
+            Rule[] rules = mRulesByPackage.get(packageName);
+            rules = ArrayUtils.appendElement(Rule.class, rules, rule);
+            mRulesByPackage.put(packageName, rules);
+        }
+
+        public void queryByPackage(String packageName, List<Rule> candidateRules) {
+            Rule[] rules = mRulesByPackage.get(packageName);
+            if (rules != null) {
+                candidateRules.addAll(Arrays.asList(rules));
+            }
+        }
+
         private final ArrayMap<ComponentName, Rule[]> mRulesByComponent =
                 new ArrayMap<ComponentName, Rule[]>(0);
+
+        private final ArrayMap<String, Rule[]> mRulesByPackage =
+                new ArrayMap<String, Rule[]>(0);
     }
 
     final FirewallHandler mHandler;
@@ -604,6 +662,7 @@ public class IntentFirewall {
         int checkComponentPermission(String permission, int pid, int uid,
                 int owningUid, boolean exported);
         Object getAMSLock();
+        void removeTasksByPackageNameLocked(String packageName, int userId);
     }
 
     /**
