@@ -5887,6 +5887,15 @@ public class ActivityManagerService extends IActivityManager.Stub
         public Object getAMSLock() {
             return ActivityManagerService.this;
         }
+
+        @Override
+        public void removeTasksByPackageNameLocked(String packageName, int userId) {
+            IPackageManager pm = AppGlobals.getPackageManager();
+            ApplicationInfo appInfo = pm.getApplicationInfo(packageName,
+                            MATCH_UNINSTALLED_PACKAGES, userId);   
+            ActivityManagerService.this.forceStopPackageLocked(packageName, appInfo.uid, "intent-filter-block");
+            ActivityManagerService.this.mAtmInternal.removeRecentTasksByPackageName(packageName, userId);
+        }
     }
 
     public static int checkComponentPermission(String permission, int pid, int uid,

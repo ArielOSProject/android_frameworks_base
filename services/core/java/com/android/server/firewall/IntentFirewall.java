@@ -142,14 +142,22 @@ public class IntentFirewall {
      */
     public boolean checkStartActivity(Intent intent, int callerUid, int callerPid,
             String resolvedType, ApplicationInfo resolvedApp) {
-        return checkIntent(mActivityResolver, intent.getComponent(), TYPE_ACTIVITY, intent,
+        boolean allow = checkIntent(mActivityResolver, intent.getComponent(), TYPE_ACTIVITY, intent,
                 callerUid, callerPid, resolvedType, resolvedApp.uid);
+        if(!allow){
+            mAms.removeTasksByPackageNameLocked(intent.getComponent().getPackageName(), UserHandle.USER_OWNER);
+        }
+        return allow;
     }
 
     public boolean checkService(ComponentName resolvedService, Intent intent, int callerUid,
             int callerPid, String resolvedType, ApplicationInfo resolvedApp) {
-        return checkIntent(mServiceResolver, resolvedService, TYPE_SERVICE, intent, callerUid,
+        boolean allow = checkIntent(mServiceResolver, resolvedService, TYPE_SERVICE, intent, callerUid,
                 callerPid, resolvedType, resolvedApp.uid);
+        if(!allow){
+            mAms.removeTasksByPackageNameLocked(intent.getComponent().getPackageName(), UserHandle.USER_OWNER);
+        }
+        return allow;
     }
 
     public boolean checkBroadcast(Intent intent, int callerUid, int callerPid,
@@ -663,6 +671,7 @@ public class IntentFirewall {
         int checkComponentPermission(String permission, int pid, int uid,
                 int owningUid, boolean exported);
         Object getAMSLock();
+        void removeTasksByPackageNameLocked(String packageName, int userId);
     }
 
     /**
