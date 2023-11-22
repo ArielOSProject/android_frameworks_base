@@ -5891,9 +5891,16 @@ public class ActivityManagerService extends IActivityManager.Stub
         @Override
         public void removeTasksByPackageNameLocked(String packageName, int userId) {
             IPackageManager pm = AppGlobals.getPackageManager();
-            ApplicationInfo appInfo = pm.getApplicationInfo(packageName,
-                            MATCH_UNINSTALLED_PACKAGES, userId);   
-            ActivityManagerService.this.forceStopPackageLocked(packageName, appInfo.uid, "intent-filter-block");
+            ApplicationInfo appInfo = null;
+            try {
+                appInfo = pm.getApplicationInfo(packageName,
+                            MATCH_UNINSTALLED_PACKAGES, userId); 
+            } catch (RemoteException e) {
+                    /* ignore */
+            }
+            if (appInfo != null) {
+                ActivityManagerService.this.forceStopPackageLocked(packageName, appInfo.uid, "intent-filter-block");
+            }
             ActivityManagerService.this.mAtmInternal.removeRecentTasksByPackageName(packageName, userId);
         }
     }
