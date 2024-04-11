@@ -84,6 +84,7 @@ import static junit.framework.Assert.assertNull;
 import static junit.framework.Assert.assertTrue;
 import static junit.framework.Assert.fail;
 
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Matchers.anyBoolean;
@@ -5565,6 +5566,69 @@ public class NotificationManagerServiceTest extends UiServiceTestCase {
     }
 
     @Test
+    public void testVisitUris_styleExtrasWithoutStyle() {
+        Notification notification = new Notification.Builder(mContext, "a")
+                .setSmallIcon(android.R.drawable.sym_def_app_icon)
+                .build();
+
+        Notification.MessagingStyle messagingStyle = new Notification.MessagingStyle(
+                personWithIcon("content://user"))
+                .addHistoricMessage(new Notification.MessagingStyle.Message("Heyhey!",
+                                System.currentTimeMillis(),
+                                personWithIcon("content://historicalMessenger")))
+                .addMessage(new Notification.MessagingStyle.Message("Are you there",
+                                System.currentTimeMillis(),
+                                personWithIcon("content://messenger")))
+                        .setShortcutIcon(
+                                Icon.createWithContentUri("content://conversationShortcut"));
+        messagingStyle.addExtras(notification.extras); // Instead of Builder.setStyle(style).
+
+        Notification.CallStyle callStyle = Notification.CallStyle.forOngoingCall(
+                        personWithIcon("content://caller"),
+                        PendingIntent.getActivity(mContext, 0, new Intent(),
+                                PendingIntent.FLAG_IMMUTABLE))
+                .setVerificationIcon(Icon.createWithContentUri("content://callVerification"));
+        callStyle.addExtras(notification.extras); // Same.
+
+        Consumer<Uri> visitor = (Consumer<Uri>) spy(Consumer.class);
+        notification.visitUris(visitor);
+
+        verify(visitor).accept(eq(Uri.parse("content://user")));
+        verify(visitor).accept(eq(Uri.parse("content://historicalMessenger")));
+        verify(visitor).accept(eq(Uri.parse("content://messenger")));
+        verify(visitor).accept(eq(Uri.parse("content://conversationShortcut")));
+        verify(visitor).accept(eq(Uri.parse("content://caller")));
+        verify(visitor).accept(eq(Uri.parse("content://callVerification")));
+    }
+
+    private static Person personWithIcon(String iconUri) {
+        return new Person.Builder()
+                .setName("Mr " + iconUri)
+                .setIcon(Icon.createWithContentUri(iconUri))
+                .build();
+    }
+
+    @Test
+    public void testVisitUris_wearableExtender() {
+        Icon actionIcon = Icon.createWithContentUri("content://media/action");
+        Icon wearActionIcon = Icon.createWithContentUri("content://media/wearAction");
+        PendingIntent intent = PendingIntent.getActivity(mContext, 0, new Intent(),
+                PendingIntent.FLAG_IMMUTABLE);
+        Notification n = new Notification.Builder(mContext, "a")
+                .setSmallIcon(android.R.drawable.sym_def_app_icon)
+                .addAction(new Notification.Action.Builder(actionIcon, "Hey!", intent).build())
+                .extend(new Notification.WearableExtender().addAction(
+                        new Notification.Action.Builder(wearActionIcon, "Wear!", intent).build()))
+                .build();
+
+        Consumer<Uri> visitor = (Consumer<Uri>) spy(Consumer.class);
+        n.visitUris(visitor);
+
+        verify(visitor).accept(eq(actionIcon.getUri()));
+        verify(visitor).accept(eq(wearActionIcon.getUri()));
+    }
+
+    @Test
     public void testSetNotificationPolicy_preP_setOldFields() {
         ZenModeHelper mZenModeHelper = mock(ZenModeHelper.class);
         mService.mZenModeHelper = mZenModeHelper;
@@ -9646,6 +9710,40 @@ public class NotificationManagerServiceTest extends UiServiceTestCase {
 
         // hypothetical other user untouched
         assertTrue(captor.getValue().isPackageAllowed(new VersionedPackage("apples", 10000)));
+    }
+
+    @Test
+    public void testMigrateNotificationFilter_invalidPackage() throws Exception {
+        int[] userIds = new int[] {UserHandle.getUserId(mUid), 1000};
+        when(mUm.getProfileIds(anyInt(), anyBoolean())).thenReturn(userIds);
+        List<String> disallowedApps = ImmutableList.of("apples", "bananas", "cherries");
+        for (int userId : userIds) {
+            when(mPackageManager.getPackageUid("apples", 0, userId)).thenThrow(
+                    new RemoteException(""));
+            when(mPackageManager.getPackageUid("bananas", 0, userId)).thenReturn(9000);
+            when(mPackageManager.getPackageUid("cherries", 0, userId)).thenReturn(9001);
+        }
+
+        when(mListeners.getNotificationListenerFilter(any())).thenReturn(
+                new NotificationListenerFilter());
+
+        mBinderService.migrateNotificationFilter(null,
+                FLAG_FILTER_TYPE_CONVERSATIONS | FLAG_FILTER_TYPE_ONGOING,
+                disallowedApps);
+
+        ArgumentCaptor<NotificationListenerFilter> captor =
+                ArgumentCaptor.forClass(NotificationListenerFilter.class);
+        verify(mListeners).setNotificationListenerFilter(any(), captor.capture());
+
+        assertEquals(FLAG_FILTER_TYPE_CONVERSATIONS | FLAG_FILTER_TYPE_ONGOING,
+                captor.getValue().getTypes());
+        // valid values stay
+        assertFalse(captor.getValue().isPackageAllowed(new VersionedPackage("bananas", 9000)));
+        assertFalse(captor.getValue().isPackageAllowed(new VersionedPackage("cherries", 9001)));
+        // don't store invalid values
+        for (VersionedPackage vp : captor.getValue().getDisallowedPackages()) {
+            assertNotEquals("apples", vp.getPackageName());
+        }
     }
 
     @Test
