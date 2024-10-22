@@ -65,6 +65,9 @@ public class KeyguardPatternViewController
     private CountDownTimer mCountdownTimer;
     private AsyncTask<?, ?, ?> mPendingLockCheck;
 
+    private boolean isIndeterminateLockoutActive;
+    private long arielLockoutDeadline = 0;
+
     private EmergencyButtonCallback mEmergencyButtonCallback = new EmergencyButtonCallback() {
         @Override
         public void onEmergencyButtonClickedWhenInCall() {
@@ -269,16 +272,35 @@ public class KeyguardPatternViewController
         // if the user is currently locked out, enforce it.
         long deadline = mLockPatternUtils.getLockoutAttemptDeadline(
                 KeyguardUpdateMonitor.getCurrentUser());
-                // ariel dead line will take priority
-        long arielDeadline = mKeyguardUpdateMonitor.getArielLockoutAttemptDeadline(KeyguardUpdateMonitor.getCurrentUser());
-        // arielDeadline takes priority
-        if(arielDeadline != 0) {
-            handleAttemptLockout(arielDeadline);
-        } else {
+        if (!getArielLockoutStatus()) {
             if (deadline != 0) {
                 handleAttemptLockout(deadline);
             } else {
                 displayDefaultSecurityMessage();
+            }
+        }
+    }
+
+    @Override
+    protected boolean getArielLockoutStatus() {
+        // ariel dead line will take priority
+        arielLockoutDeadline = mKeyguardUpdateMonitor.getArielLockoutAttemptDeadline(KeyguardUpdateMonitor.getCurrentUser());
+        isIndeterminateLockoutActive = mKeyguardUpdateMonitor.getArielLockoutAttemptIndeterminate(KeyguardUpdateMonitor.getCurrentUser());
+        // indeterminate lockout takes priority
+        if(isIndeterminateLockoutActive) {
+            mLockPatternView.disableInput();
+            mLockPatternView.clearPattern();
+            mLockPatternView.setEnabled(false);
+            mMessageAreaController.setMessage(mView.getResources().getString(
+                   com.arielos.platform.internal.R.string.lockscreen_lockout_message));
+            return true;
+        } else {
+            // arielDeadline takes priority
+            if(arielLockoutDeadline != 0) {
+                handleAttemptLockout(arielLockoutDeadline);
+                return true;
+            } else {
+                return false;
             }
         }
     }
@@ -300,6 +322,12 @@ public class KeyguardPatternViewController
     }
 
     @Override
+    public void onResume(int reason) {
+        super.onResume(reason);
+        boolean arielLockoutActive = getArielLockoutStatus();
+    }
+
+    @Override
     public boolean needsInput() {
         return false;
     }
@@ -307,33 +335,38 @@ public class KeyguardPatternViewController
     @Override
     public void showPromptReason(int reason) {
         /// TODO: move all this logic into the MessageAreaController?
-        switch (reason) {
-            case PROMPT_REASON_RESTART:
-                mMessageAreaController.setMessage(R.string.kg_prompt_reason_restart_pattern);
-                break;
-            case PROMPT_REASON_TIMEOUT:
-                mMessageAreaController.setMessage(R.string.kg_prompt_reason_timeout_pattern);
-                break;
-            case PROMPT_REASON_DEVICE_ADMIN:
-                mMessageAreaController.setMessage(R.string.kg_prompt_reason_device_admin);
-                break;
-            case PROMPT_REASON_USER_REQUEST:
-                mMessageAreaController.setMessage(R.string.kg_prompt_reason_user_request);
-                break;
-            case PROMPT_REASON_PREPARE_FOR_UPDATE:
-                mMessageAreaController.setMessage(R.string.kg_prompt_reason_timeout_pattern);
-                break;
-            case PROMPT_REASON_NON_STRONG_BIOMETRIC_TIMEOUT:
-                mMessageAreaController.setMessage(R.string.kg_prompt_reason_timeout_pattern);
-                break;
-            case PROMPT_REASON_TRUSTAGENT_EXPIRED:
-                mMessageAreaController.setMessage(R.string.kg_prompt_reason_timeout_pattern);
-                break;
-            case PROMPT_REASON_NONE:
-                break;
-            default:
-                mMessageAreaController.setMessage(R.string.kg_prompt_reason_timeout_pattern);
-                break;
+        if (isIndeterminateLockoutActive) {
+            mMessageAreaController.setMessage(mView.getResources().getString(
+                    com.arielos.platform.internal.R.string.lockscreen_lockout_message));
+        } else {
+            switch (reason) {
+                case PROMPT_REASON_RESTART:
+                    mMessageAreaController.setMessage(R.string.kg_prompt_reason_restart_pattern);
+                    break;
+                case PROMPT_REASON_TIMEOUT:
+                    mMessageAreaController.setMessage(R.string.kg_prompt_reason_timeout_pattern);
+                    break;
+                case PROMPT_REASON_DEVICE_ADMIN:
+                    mMessageAreaController.setMessage(R.string.kg_prompt_reason_device_admin);
+                    break;
+                case PROMPT_REASON_USER_REQUEST:
+                    mMessageAreaController.setMessage(R.string.kg_prompt_reason_user_request);
+                    break;
+                case PROMPT_REASON_PREPARE_FOR_UPDATE:
+                    mMessageAreaController.setMessage(R.string.kg_prompt_reason_timeout_pattern);
+                    break;
+                case PROMPT_REASON_NON_STRONG_BIOMETRIC_TIMEOUT:
+                    mMessageAreaController.setMessage(R.string.kg_prompt_reason_timeout_pattern);
+                    break;
+                case PROMPT_REASON_TRUSTAGENT_EXPIRED:
+                    mMessageAreaController.setMessage(R.string.kg_prompt_reason_timeout_pattern);
+                    break;
+                case PROMPT_REASON_NONE:
+                    break;
+                default:
+                    mMessageAreaController.setMessage(R.string.kg_prompt_reason_timeout_pattern);
+                    break;
+            }
         }
     }
 
@@ -384,6 +417,10 @@ public class KeyguardPatternViewController
                             R.string.kg_too_many_failed_attempts_countdown),
                         /* animate= */ false
                 );
+                if (arielLockoutDeadline == 0) {
+                    displayDefaultSecurityMessage();
+                    cancel();
+                }
             }
 
             @Override

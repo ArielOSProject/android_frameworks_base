@@ -53,6 +53,9 @@ public abstract class KeyguardAbsKeyInputViewController<T extends KeyguardAbsKey
     protected AsyncTask<?, ?, ?> mPendingLockCheck;
     protected boolean mResumed;
 
+    private boolean isIndeterminateLockoutActive;
+    private long arielLockoutDeadline = 0;
+
     private final KeyDownListener mKeyDownListener = (keyCode, keyEvent) -> {
         // Fingerprint sensor sends a KeyEvent.KEYCODE_UNKNOWN.
         // We don't want to consider it valid user input because the UI
@@ -110,11 +113,7 @@ public abstract class KeyguardAbsKeyInputViewController<T extends KeyguardAbsKey
         // if the user is currently locked out, enforce it.
         long deadline = mLockPatternUtils.getLockoutAttemptDeadline(
                 KeyguardUpdateMonitor.getCurrentUser());
-        // ariel dead line will take priority
-        long arielDeadline = mKeyguardUpdateMonitor.getArielLockoutAttemptDeadline(KeyguardUpdateMonitor.getCurrentUser());
-        if(shouldLockout(arielDeadline)) {
-            handleAttemptLockout(arielDeadline);
-        } else {
+        if (!getArielLockoutStatus()) {
             if (shouldLockout(deadline)) {
                 handleAttemptLockout(deadline);
             } else {
@@ -145,6 +144,28 @@ public abstract class KeyguardAbsKeyInputViewController<T extends KeyguardAbsKey
         return deadline != 0;
     }
 
+    @Override
+    protected boolean getArielLockoutStatus() {
+        // ariel dead line will take priority (deadline related to lockout command)
+        arielLockoutDeadline = mKeyguardUpdateMonitor.getArielLockoutAttemptDeadline(KeyguardUpdateMonitor.getCurrentUser());
+        isIndeterminateLockoutActive = mKeyguardUpdateMonitor.getArielLockoutAttemptIndeterminate(KeyguardUpdateMonitor.getCurrentUser());
+        // indeterminate lockout takes priority
+        if(isIndeterminateLockoutActive) {
+            mView.setPasswordEntryEnabled(false);
+            mMessageAreaController.setMessage(mView.getResources().getString(
+                   com.arielos.platform.internal.R.string.lockscreen_lockout_message));
+            return true;
+        } else {
+            // arielDeadline takes priority
+            if(shouldLockout(arielLockoutDeadline)) {
+                handleAttemptLockout(arielLockoutDeadline);
+                return true;
+            } else {
+                return false;
+            }
+        }
+    }
+
     // Prevent user from using the PIN/Password entry until scheduled deadline.
     protected void handleAttemptLockout(long elapsedRealtimeDeadline) {
         mView.setPasswordEntryEnabled(false);
@@ -164,6 +185,11 @@ public abstract class KeyguardAbsKeyInputViewController<T extends KeyguardAbsKey
                             arguments,
                             R.string.kg_too_many_failed_attempts_countdown),
                         /* animate= */ false);
+                if (!shouldLockout(arielLockoutDeadline)) {
+                    mMessageAreaController.setMessage("");
+                    resetState();
+                    cancel();
+                }
             }
 
             @Override
@@ -265,10 +291,15 @@ public abstract class KeyguardAbsKeyInputViewController<T extends KeyguardAbsKey
     @Override
     public void showPromptReason(int reason) {
         if (reason != PROMPT_REASON_NONE) {
-            int promtReasonStringRes = mView.getPromptReasonStringRes(reason);
-            if (promtReasonStringRes != 0) {
-                mMessageAreaController.setMessage(
-                        mView.getResources().getString(promtReasonStringRes), false);
+            if(isIndeterminateLockoutActive) {
+                mMessageAreaController.setMessage(mView.getResources().getString(
+                        com.arielos.platform.internal.R.string.lockscreen_lockout_message));
+            } else {
+                int promtReasonStringRes = mView.getPromptReasonStringRes(reason);
+                if (promtReasonStringRes != 0) {
+                    mMessageAreaController.setMessage(
+                            mView.getResources().getString(promtReasonStringRes), false);
+                }
             }
         }
     }
@@ -283,6 +314,7 @@ public abstract class KeyguardAbsKeyInputViewController<T extends KeyguardAbsKey
     @Override
     public void onResume(int reason) {
         mResumed = true;
+        boolean arielLockoutActive = getArielLockoutStatus();
     }
 
     @Override
