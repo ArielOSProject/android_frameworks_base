@@ -183,6 +183,11 @@ public abstract class KeyguardInputViewController<T extends KeyguardInputView>
     /** Determines the message to show in the bouncer when it first appears. */
     protected abstract int getInitialMessageResId();
 
+    /** Check if any Ariel lockout is active (determinate or indeterminate) */
+    protected boolean getArielLockoutStatus() {
+        return false;
+    }
+
     /**
      * Binds the {@link KeyguardInputView#getBouncerMessageView()} view with the provided context.
      */
