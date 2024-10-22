@@ -164,4 +164,9 @@ public interface KeyguardSecurityView {
      * When bouncer was visible but is being dragged down or dismissed.
      */
     default void onStartingToHide() {};
+
+    /** Check if any Ariel lockout is active (determinate or indeterminate) */
+    default boolean getArielLockoutStatus() {
+        return false;
+    }
 }

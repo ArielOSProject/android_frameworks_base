@@ -2964,6 +2964,10 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener, Dumpab
         return mArielSecurityInterface.getLockoutAttemptDeadline(userId);
     }
 
+    public boolean getArielLockoutAttemptIndeterminate(int userId) {
+        return mArielSecurityInterface.getLockoutAttemptIndeterminate(userId);
+    }
+
     /**
      * Unregister all listeners.
      */

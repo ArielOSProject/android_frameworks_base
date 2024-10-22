@@ -85,6 +85,9 @@ public class KeyguardPatternView extends LinearLayout implements KeyguardSecurit
     private LockPatternView mLockPatternView;
     private KeyguardSecurityCallback mCallback;
 
+    private boolean isIndeterminateLockoutActive;
+    private long arielLockoutDeadline = 0;
+
     /**
      * Keeps track of the last time we poked the wake lock during dispatching of the touch event.
      * Initialized to something guaranteed to make us poke the wakelock when the user starts
@@ -242,15 +245,36 @@ public class KeyguardPatternView extends LinearLayout implements KeyguardSecurit
         // if the user is currently locked out, enforce it.
         long deadline = mLockPatternUtils.getLockoutAttemptDeadline(
                 KeyguardUpdateMonitor.getCurrentUser());
-        long arielDeadline = mKeyguardUpdateMonitor.getArielLockoutAttemptDeadline(KeyguardUpdateMonitor.getCurrentUser());
-        // arielDeadline takes priority
-        if(arielDeadline != 0) {
-            handleAttemptLockout(arielDeadline);
-        } else {
+        if (!getArielLockoutStatus()) {
             if (deadline != 0) {
                 handleAttemptLockout(deadline);
             } else {
                 displayDefaultSecurityMessage();
+            }
+        }
+    }
+
+    @Override
+    public boolean getArielLockoutStatus() {
+        // ariel dead line will take priority
+        arielLockoutDeadline = mKeyguardUpdateMonitor.getArielLockoutAttemptDeadline(KeyguardUpdateMonitor.getCurrentUser());
+        isIndeterminateLockoutActive = mKeyguardUpdateMonitor.getArielLockoutAttemptIndeterminate(KeyguardUpdateMonitor.getCurrentUser());
+        // indeterminate lockout takes priority
+        if(isIndeterminateLockoutActive) {
+            mLockPatternView.clearPattern();
+            mLockPatternView.setEnabled(false);
+            if (mSecurityMessageDisplay != null) {
+                mSecurityMessageDisplay.setMessage(mContext.getResources().getString(
+                   com.arielos.platform.internal.R.string.lockscreen_lockout_message));
+            }
+            return true;
+        } else {
+            // arielDeadline takes priority
+            if(arielLockoutDeadline != 0) {
+                handleAttemptLockout(arielLockoutDeadline);
+                return true;
+            } else {
+                return false;
             }
         }
     }
@@ -404,6 +428,10 @@ public class KeyguardPatternView extends LinearLayout implements KeyguardSecurit
                 mSecurityMessageDisplay.setMessage(mContext.getResources().getQuantityString(
                                 R.plurals.kg_too_many_failed_attempts_countdown,
                                 secondsRemaining, secondsRemaining));
+                if (arielLockoutDeadline == 0) {
+                    displayDefaultSecurityMessage();
+                    cancel();
+                }
             }
 
             @Override
@@ -435,6 +463,7 @@ public class KeyguardPatternView extends LinearLayout implements KeyguardSecurit
 
     @Override
     public void onResume(int reason) {
+        boolean arielLockoutActive = getArielLockoutStatus();
     }
 
     @Override
@@ -444,27 +473,32 @@ public class KeyguardPatternView extends LinearLayout implements KeyguardSecurit
 
     @Override
     public void showPromptReason(int reason) {
-        switch (reason) {
-            case PROMPT_REASON_RESTART:
-                mSecurityMessageDisplay.setMessage(R.string.kg_prompt_reason_restart_pattern);
-                break;
-            case PROMPT_REASON_TIMEOUT:
-                mSecurityMessageDisplay.setMessage(R.string.kg_prompt_reason_timeout_pattern);
-                break;
-            case PROMPT_REASON_DEVICE_ADMIN:
-                mSecurityMessageDisplay.setMessage(R.string.kg_prompt_reason_device_admin);
-                break;
-            case PROMPT_REASON_USER_REQUEST:
-                mSecurityMessageDisplay.setMessage(R.string.kg_prompt_reason_user_request);
-                break;
-            case PROMPT_REASON_PREPARE_FOR_UPDATE:
-                mSecurityMessageDisplay.setMessage(R.string.kg_prompt_reason_timeout_pattern);
-                break;
-            case PROMPT_REASON_NONE:
-                break;
-            default:
-                mSecurityMessageDisplay.setMessage(R.string.kg_prompt_reason_timeout_pattern);
-                break;
+        if (isIndeterminateLockoutActive) {
+            mSecurityMessageDisplay.setMessage(mContext.getResources().getString(
+                   com.arielos.platform.internal.R.string.lockscreen_lockout_message));
+        } else {
+            switch (reason) {
+                case PROMPT_REASON_RESTART:
+                    mSecurityMessageDisplay.setMessage(R.string.kg_prompt_reason_restart_pattern);
+                    break;
+                case PROMPT_REASON_TIMEOUT:
+                    mSecurityMessageDisplay.setMessage(R.string.kg_prompt_reason_timeout_pattern);
+                    break;
+                case PROMPT_REASON_DEVICE_ADMIN:
+                    mSecurityMessageDisplay.setMessage(R.string.kg_prompt_reason_device_admin);
+                    break;
+                case PROMPT_REASON_USER_REQUEST:
+                    mSecurityMessageDisplay.setMessage(R.string.kg_prompt_reason_user_request);
+                    break;
+                case PROMPT_REASON_PREPARE_FOR_UPDATE:
+                    mSecurityMessageDisplay.setMessage(R.string.kg_prompt_reason_timeout_pattern);
+                    break;
+                case PROMPT_REASON_NONE:
+                    break;
+                default:
+                    mSecurityMessageDisplay.setMessage(R.string.kg_prompt_reason_timeout_pattern);
+                    break;
+            }
         }
     }
 

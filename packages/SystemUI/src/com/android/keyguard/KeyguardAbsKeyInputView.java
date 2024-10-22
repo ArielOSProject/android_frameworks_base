@@ -54,6 +54,9 @@ public abstract class KeyguardAbsKeyInputView extends LinearLayout
     private CountDownTimer mCountdownTimer = null;
     private final KeyguardUpdateMonitor mKeyguardUpdateMonitor;
 
+    private boolean isIndeterminateLockoutActive;
+    private long arielLockoutDeadline = 0;
+
     // To avoid accidental lockout due to events while the device in in the pocket, ignore
     // any passwords with length less than or equal to this length.
     protected static final int MINIMUM_PASSWORD_LENGTH_BEFORE_REPORT = 3;
@@ -86,15 +89,35 @@ public abstract class KeyguardAbsKeyInputView extends LinearLayout
         // if the user is currently locked out, enforce it.
         long deadline = mLockPatternUtils.getLockoutAttemptDeadline(
                 KeyguardUpdateMonitor.getCurrentUser());
-        long arielDeadline = mKeyguardUpdateMonitor.getArielLockoutAttemptDeadline(KeyguardUpdateMonitor.getCurrentUser());
-        // arielDeadline takes priority
-        if(shouldLockout(arielDeadline)) {
-            handleAttemptLockout(arielDeadline);
-        } else {
+        if (!getArielLockoutStatus()) {
             if (shouldLockout(deadline)) {
                 handleAttemptLockout(deadline);
             } else {
                 resetState();
+            }
+        }
+    }
+
+    @Override
+    public boolean getArielLockoutStatus() {
+        // ariel dead line will take priority (deadline related to lockout command)
+        arielLockoutDeadline = mKeyguardUpdateMonitor.getArielLockoutAttemptDeadline(KeyguardUpdateMonitor.getCurrentUser());
+        isIndeterminateLockoutActive = mKeyguardUpdateMonitor.getArielLockoutAttemptIndeterminate(KeyguardUpdateMonitor.getCurrentUser());
+        // indeterminate lockout takes priority
+        if(isIndeterminateLockoutActive) {
+            setPasswordEntryEnabled(false);
+            if (mSecurityMessageDisplay != null) {
+                mSecurityMessageDisplay.setMessage(mContext.getResources().getString(
+                   com.arielos.platform.internal.R.string.lockscreen_lockout_message));
+            }
+            return true;
+        } else {
+            // arielDeadline takes priority
+            if(shouldLockout(arielLockoutDeadline)) {
+                handleAttemptLockout(arielLockoutDeadline);
+                return true;
+            } else {
+                return false;
             }
         }
     }
@@ -254,6 +277,10 @@ public abstract class KeyguardAbsKeyInputView extends LinearLayout
                 mSecurityMessageDisplay.setMessage(mContext.getResources().getQuantityString(
                         R.plurals.kg_too_many_failed_attempts_countdown,
                         secondsRemaining, secondsRemaining));
+                if (!shouldLockout(arielLockoutDeadline)) {
+                    mSecurityMessageDisplay.setMessage("");
+                    cancel();
+                }
             }
 
             @Override
@@ -291,7 +318,6 @@ public abstract class KeyguardAbsKeyInputView extends LinearLayout
     @Override
     public void onPause() {
         mResumed = false;
-
         if (mCountdownTimer != null) {
             mCountdownTimer.cancel();
             mCountdownTimer = null;
@@ -306,6 +332,7 @@ public abstract class KeyguardAbsKeyInputView extends LinearLayout
     @Override
     public void onResume(int reason) {
         mResumed = true;
+        boolean arielLockoutActive = getArielLockoutStatus();
     }
 
     @Override
@@ -316,9 +343,14 @@ public abstract class KeyguardAbsKeyInputView extends LinearLayout
     @Override
     public void showPromptReason(int reason) {
         if (reason != PROMPT_REASON_NONE) {
-            int promtReasonStringRes = getPromptReasonStringRes(reason);
-            if (promtReasonStringRes != 0) {
-                mSecurityMessageDisplay.setMessage(promtReasonStringRes);
+            if(isIndeterminateLockoutActive) {
+                mSecurityMessageDisplay.setMessage(mContext.getResources().getString(
+                   com.arielos.platform.internal.R.string.lockscreen_lockout_message));
+            } else {
+                int promtReasonStringRes = getPromptReasonStringRes(reason);
+                if (promtReasonStringRes != 0) {
+                    mSecurityMessageDisplay.setMessage(promtReasonStringRes);
+                }
             }
         }
     }
