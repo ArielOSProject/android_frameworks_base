@@ -279,6 +279,7 @@ public abstract class KeyguardAbsKeyInputView extends LinearLayout
                         secondsRemaining, secondsRemaining));
                 if (!shouldLockout(arielLockoutDeadline)) {
                     mSecurityMessageDisplay.setMessage("");
+                    resetState();
                     cancel();
                 }
             }
