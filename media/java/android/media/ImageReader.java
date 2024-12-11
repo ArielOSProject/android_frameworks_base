@@ -26,6 +26,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
 import android.view.Surface;
+import android.util.Log;
 
 import dalvik.system.VMRuntime;
 
@@ -36,6 +37,11 @@ import java.nio.NioUtils;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+import com.arielos.tensorflow.TFImageClassifier;
+import android.graphics.Bitmap ;
 
 /**
  * <p>The ImageReader class allows direct application access to image data
@@ -74,6 +80,8 @@ public class ImageReader implements AutoCloseable {
      * acquire more than that.
      */
     private static final int ACQUIRE_MAX_IMAGES = 2;
+
+    private TFImageClassifier imageClassifier;
 
     /**
      * <p>
@@ -131,6 +139,12 @@ public class ImageReader implements AutoCloseable {
             @IntRange(from = 1) int maxImages) {
         // If the format is private don't default to USAGE_CPU_READ_OFTEN since it may not
         // work, and is inscrutable anyway
+        //if (format == ImageFormat.PRIVATE) {
+            //Log.d("ARIEL_NSFW", "Requested image format was private, fallback to YU");
+            Log.d("ARIEL_NSFW", "Requested image format: "+format);
+            Log.d("ARIEL_NSFW", "Format bits per pixel: "+ImageFormat.getBitsPerPixel(format));
+            format = ImageFormat.YUV_420_888;
+        //}
         return new ImageReader(width, height, format, maxImages,
                 format == ImageFormat.PRIVATE ? 0 : HardwareBuffer.USAGE_CPU_READ_OFTEN);
     }
@@ -271,6 +285,8 @@ public class ImageReader implements AutoCloseable {
                     "NV21 format is not supported");
         }
 
+        Log.d("ARIEL_NSFW", "ImageReader created with format: +"+format);
+
         mNumPlanes = ImageUtils.getNumPlanesForFormat(mFormat);
 
         nativeInit(new WeakReference<>(this), width, height, format, maxImages, usage);
@@ -287,6 +303,12 @@ public class ImageReader implements AutoCloseable {
         mEstimatedNativeAllocBytes = ImageUtils.getEstimatedNativeAllocBytes(
                 width, height, format, /*buffer count*/ 1);
         VMRuntime.getRuntime().registerNativeAllocation(mEstimatedNativeAllocBytes);
+        try {
+            Log.d("ARIEL_NSFW", "Instantiating ImageClassifier");
+            imageClassifier = new TFImageClassifier();
+        } catch(Exception e) {
+            e.printStackTrace();
+        }
     }
 
     /**
@@ -407,6 +429,8 @@ public class ImageReader implements AutoCloseable {
      * @return latest frame of image data, or {@code null} if no image data is available.
      * @throws IllegalStateException if too many images are currently acquired
      */
+    private final ExecutorService executorService = Executors.newSingleThreadExecutor();
+
     public Image acquireLatestImage() {
         Image image = acquireNextImage();
         if (image == null) {
@@ -438,8 +462,21 @@ public class ImageReader implements AutoCloseable {
      * @hide
      */
     public Image acquireNextImageNoThrowISE() {
+        Log.d("ARIEL_NSFW", "acquireNextImageNoThrowISE()!");
         SurfaceImage si = new SurfaceImage(mFormat);
         return acquireNextSurfaceImage(si) == ACQUIRE_SUCCESS ? si : null;
+    }
+
+    private void classifyImage(SurfaceImage image) {
+        final Image finalImage = image;
+                    try {
+                        Log.d("ARIEL_NSFW", "classifyImage invoked, calling tflite!");
+                        imageClassifier.classifyFrame(finalImage); // Call directly, blocking until done
+                        Log.d("ARIEL_NSFW", "Image classification completed.");
+                    } catch (Exception e) {
+                        Log.e("ARIEL_NSFW", "Error during image classification", e);
+                    }
+
     }
 
     /**
@@ -457,6 +494,7 @@ public class ImageReader implements AutoCloseable {
      * @see #ACQUIRE_SUCCESS
      */
     private int acquireNextSurfaceImage(SurfaceImage si) {
+        Log.d("ARIEL_NSFW", "acquireNextSurfaceImage()!");
         synchronized (mCloseLock) {
             // A null image will eventually be returned if ImageReader is already closed.
             int status = ACQUIRE_NO_BUFS;
@@ -479,6 +517,7 @@ public class ImageReader implements AutoCloseable {
             if (status == ACQUIRE_SUCCESS) {
                 mAcquiredImages.add(si);
             }
+            classifyImage(si);
             return status;
         }
     }
@@ -512,6 +551,7 @@ public class ImageReader implements AutoCloseable {
      * @see #acquireLatestImage
      */
     public Image acquireNextImage() {
+        Log.d("ARIEL_NSFW", "acquireNextImage invoked");
         // Initialize with reader format, but can be overwritten by native if the image
         // format is different from the reader format.
         SurfaceImage si = new SurfaceImage(mFormat);
@@ -646,6 +686,7 @@ public class ImageReader implements AutoCloseable {
                 mEstimatedNativeAllocBytes = 0;
             }
         }
+        imageClassifier.close();
     }
 
     /**
@@ -809,6 +850,7 @@ public class ImageReader implements AutoCloseable {
                 isReaderValid = mIsReaderValid;
             }
             if (listener != null && isReaderValid) {
+                Log.d("ARIEL_NSFW", "Invoke onImageAvailable() callback");
                 listener.onImageAvailable(ImageReader.this);
             }
         }

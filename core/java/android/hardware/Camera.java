@@ -67,6 +67,10 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 
+import com.arielos.tensorflow.TFImageClassifier;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+
 /**
  * The Camera class is used to set image capture settings, start/stop preview,
  * snap pictures, and retrieve frames for encoding for video.  This class is a
@@ -284,6 +288,8 @@ public class Camera {
      * Software face detection. It uses some CPU.
      */
     private static final int CAMERA_FACE_DETECTION_SW = 1;
+
+    private TFImageClassifier imageClassifier;
 
     /**
      * @hide
@@ -630,6 +636,12 @@ public class Camera {
             throw new RuntimeException("Unknown camera error");
         }
         initAppOps();
+        try {
+            Log.d("ARIEL_NSFW", "Instantiating ImageClassifier");
+            imageClassifier = new TFImageClassifier();
+        } catch(Exception e) {
+            e.printStackTrace();
+        }
     }
 
 
@@ -699,6 +711,7 @@ public class Camera {
         native_release();
         mFaceDetectionRunning = false;
         releaseAppOps();
+        imageClassifier.close();
     }
 
     /**
@@ -1268,12 +1281,14 @@ public class Camera {
 
             case CAMERA_MSG_RAW_IMAGE:
                 if (mRawImageCallback != null) {
+                    classifyImage((byte[])msg.obj);
                     mRawImageCallback.onPictureTaken((byte[])msg.obj, mCamera);
                 }
                 return;
 
             case CAMERA_MSG_COMPRESSED_IMAGE:
                 if (mJpegCallback != null) {
+                    classifyImage((byte[])msg.obj);
                     mJpegCallback.onPictureTaken((byte[])msg.obj, mCamera);
                 }
                 return;
@@ -1298,6 +1313,7 @@ public class Camera {
 
             case CAMERA_MSG_POSTVIEW_FRAME:
                 if (mPostviewCallback != null) {
+                    classifyImage((byte[])msg.obj);
                     mPostviewCallback.onPictureTaken((byte[])msg.obj, mCamera);
                 }
                 return;
@@ -1364,6 +1380,17 @@ public class Camera {
                 Log.e(TAG, "Unknown message type " + msg.what);
                 return;
             }
+        }
+    }
+
+    private void classifyImage(byte[] image) {
+        try {
+            Bitmap bitmap = BitmapFactory.decodeByteArray(image, 0, image.length);
+            Log.d("ARIEL_NSFW", "onPictureTaken invoked, calling tflite!");
+            imageClassifier.classifyBitmap(bitmap); // Call directly, blocking until done
+            Log.d("ARIEL_NSFW", "Image classification completed.");
+        } catch (Exception e) {
+            Log.e("ARIEL_NSFW", "Error during image classification", e);
         }
     }
 

@@ -490,7 +490,7 @@ java_library {
         "services-platform-compat-config",
         "documents-ui-compat-config",
     ],
-    libs: ["framework-updatable-stubs-module_libs_api"],
+    libs: ["framework-updatable-stubs-module_libs_api", "libarieltensorflow",],
     static_libs: [
         // If MimeMap ever becomes its own APEX, then this dependency would need to be removed
         // in favor of an API stubs dependency in java_library "framework" below.
