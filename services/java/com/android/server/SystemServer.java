@@ -2962,27 +2962,6 @@ public final class SystemServer implements Dumpable {
             reportWtf("Making " + externalServer + " ready", e);
         }
 
-        // Ariel Services
-        String arielExternalServer = context.getResources().getString(
-                com.arielos.platform.internal.R.string.config_externalArielSystemServer);
-
-        final Class<?> arielServerClazz;
-        try {
-            arielServerClazz = Class.forName(arielExternalServer);
-            final Constructor<?> constructor = arielServerClazz.getDeclaredConstructor(Context.class);
-            constructor.setAccessible(true);
-            final Object baseObject = constructor.newInstance(mSystemContext);
-            final Method method = baseObject.getClass().getDeclaredMethod("run");
-            method.setAccessible(true);
-            method.invoke(baseObject);
-        } catch (ClassNotFoundException
-                | IllegalAccessException
-                | InvocationTargetException
-                | InstantiationException
-                | NoSuchMethodException e) {
-            reportWtf("Making " + arielExternalServer + " ready", e);
-        }
-
         // It is now time to start up the app processes...
 
         t.traceBegin("MakeLockSettingsServiceReady");
@@ -3494,6 +3473,32 @@ public final class SystemServer implements Dumpable {
         t.traceEnd();
 
         t.traceEnd(); // startOtherServices
+
+        // Start Ariel Services
+        /**
+         * We are starting them as the last step because it may influence the boot process of other
+         * core system services. To avoid system failing to boot when some core services are delayed
+         * because of us starting Ariel Services, we move our initialization to the end when core services are started.
+         */
+        String arielExternalServer = context.getResources().getString(
+                com.arielos.platform.internal.R.string.config_externalArielSystemServer);
+
+        final Class<?> arielServerClazz;
+        try {
+            arielServerClazz = Class.forName(arielExternalServer);
+            final Constructor<?> constructor = arielServerClazz.getDeclaredConstructor(Context.class);
+            constructor.setAccessible(true);
+            final Object baseObject = constructor.newInstance(mSystemContext);
+            final Method method = baseObject.getClass().getDeclaredMethod("run");
+            method.setAccessible(true);
+            method.invoke(baseObject);
+        } catch (ClassNotFoundException
+                | IllegalAccessException
+                | InvocationTargetException
+                | InstantiationException
+                | NoSuchMethodException e) {
+            reportWtf("Making " + arielExternalServer + " ready", e);
+        }
     }
 
     private void startOnDeviceIntelligenceService(TimingsTraceAndSlog t) {

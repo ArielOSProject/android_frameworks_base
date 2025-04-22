@@ -1300,6 +1300,7 @@ public class BiometricService extends SystemService {
         mSettingObserver = mInjector.getSettingObserver(context, mHandler,
                 mEnabledOnKeyguardCallbacks);
         mRequestCounter = mInjector.getRequestGenerator();
+        mArielUtils = new ArielUtils(context);
         mBiometricContext = injector.getBiometricContext(context);
         mUserManager = injector.getUserManager(context);
         mBiometricCameraManager = injector.getBiometricCameraManager(context);
