@@ -995,6 +995,7 @@ public class BiometricService extends SystemService {
         mSettingObserver = mInjector.getSettingObserver(context, mHandler,
                 mEnabledOnKeyguardCallbacks);
         mRequestCounter = mInjector.getRequestGenerator();
+        mArielUtils = new ArielUtils(context);
 
         // TODO(b/193089985) This logic lives here (outside of CoexCoordinator) so that it doesn't
         //  need to depend on context. We can remove this code once the advanced logic is enabled
