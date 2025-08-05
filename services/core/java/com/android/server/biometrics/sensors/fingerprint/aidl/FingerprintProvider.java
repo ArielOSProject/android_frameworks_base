@@ -140,6 +140,8 @@ public class FingerprintProvider implements IBinder.DeathRecipient, ServiceProvi
 
     private boolean mCleanup;
 
+    private ArielUtils mArielUtils;
+
     private final class BiometricTaskStackListener extends TaskStackListener {
         @Override
         public void onTaskStackChanged() {

@@ -106,6 +106,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+import arielos.util.ArielUtils;
+
 /**
  * A service to manage multiple clients that want to access the fingerprint HAL API.
  * The service is responsible for maintaining a list of clients and dispatching all
@@ -136,6 +138,8 @@ public class FingerprintService extends SystemService {
     private final Handler mHandler;
     @NonNull
     private final FingerprintServiceRegistry mRegistry;
+
+    private ArielUtils mArielUtils;
 
     interface FingerprintProviderFunction {
         FingerprintProvider getFingerprintProvider(Pair<String, SensorProps[]> filteredSensorProp,

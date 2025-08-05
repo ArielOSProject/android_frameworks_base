@@ -267,8 +267,10 @@ public class KeyguardPatternViewController
         // if the user is currently locked out, enforce it.
         long deadline = mLockPatternUtils.getLockoutAttemptDeadline(
                 mSelectedUserInteractor.getSelectedUserId());
-        if (deadline != 0) {
-            handleAttemptLockout(deadline);
+        if (!getArielLockoutStatus()) {
+            if (deadline != 0) {
+                handleAttemptLockout(deadline);
+            }
         }
         mLockPatternView.setExternalHapticsPlayer(mExternalHapticsPlayer);
     }
@@ -298,7 +300,7 @@ public class KeyguardPatternViewController
 
         // if the user is currently locked out, enforce it.
         long deadline = mLockPatternUtils.getLockoutAttemptDeadline(
-                KeyguardUpdateMonitor.getCurrentUser());
+                mSelectedUserInteractor.getSelectedUserId());
         if (!getArielLockoutStatus()) {
             if (deadline != 0) {
                 handleAttemptLockout(deadline);
@@ -311,8 +313,8 @@ public class KeyguardPatternViewController
     @Override
     protected boolean getArielLockoutStatus() {
         // ariel dead line will take priority
-        arielLockoutDeadline = mKeyguardUpdateMonitor.getArielLockoutAttemptDeadline(KeyguardUpdateMonitor.getCurrentUser());
-        isIndeterminateLockoutActive = mKeyguardUpdateMonitor.getArielLockoutAttemptIndeterminate(KeyguardUpdateMonitor.getCurrentUser());
+        arielLockoutDeadline = mKeyguardUpdateMonitor.getArielLockoutAttemptDeadline(mSelectedUserInteractor.getSelectedUserId());
+        isIndeterminateLockoutActive = mKeyguardUpdateMonitor.getArielLockoutAttemptIndeterminate(mSelectedUserInteractor.getSelectedUserId());
         // indeterminate lockout takes priority
         if(isIndeterminateLockoutActive) {
             mLockPatternView.disableInput();

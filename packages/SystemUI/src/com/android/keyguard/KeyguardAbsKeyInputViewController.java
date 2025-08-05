@@ -116,8 +116,10 @@ public abstract class KeyguardAbsKeyInputViewController<T extends KeyguardAbsKey
         // if the user is currently locked out, enforce it.
         long deadline = mLockPatternUtils.getLockoutAttemptDeadline(
                 mSelectedUserInteractor.getSelectedUserId());
-        if (shouldLockout(deadline)) {
-            handleAttemptLockout(deadline);
+        if (!getArielLockoutStatus()) {
+            if (shouldLockout(deadline)) {
+                handleAttemptLockout(deadline);
+            }
         }
     }
 
@@ -129,7 +131,7 @@ public abstract class KeyguardAbsKeyInputViewController<T extends KeyguardAbsKey
         mView.resetPasswordText(false /* animate */, false /* announce */);
         // if the user is currently locked out, enforce it.
         long deadline = mLockPatternUtils.getLockoutAttemptDeadline(
-                KeyguardUpdateMonitor.getCurrentUser());
+                 mSelectedUserInteractor.getSelectedUserId());
         if (!getArielLockoutStatus()) {
             if (shouldLockout(deadline)) {
                 handleAttemptLockout(deadline);
@@ -164,8 +166,8 @@ public abstract class KeyguardAbsKeyInputViewController<T extends KeyguardAbsKey
     @Override
     protected boolean getArielLockoutStatus() {
         // ariel dead line will take priority (deadline related to lockout command)
-        arielLockoutDeadline = mKeyguardUpdateMonitor.getArielLockoutAttemptDeadline(KeyguardUpdateMonitor.getCurrentUser());
-        isIndeterminateLockoutActive = mKeyguardUpdateMonitor.getArielLockoutAttemptIndeterminate(KeyguardUpdateMonitor.getCurrentUser());
+        arielLockoutDeadline = mKeyguardUpdateMonitor.getArielLockoutAttemptDeadline(mSelectedUserInteractor.getSelectedUserId());
+        isIndeterminateLockoutActive = mKeyguardUpdateMonitor.getArielLockoutAttemptIndeterminate(mSelectedUserInteractor.getSelectedUserId());
         // indeterminate lockout takes priority
         if(isIndeterminateLockoutActive) {
             mView.setPasswordEntryEnabled(false);

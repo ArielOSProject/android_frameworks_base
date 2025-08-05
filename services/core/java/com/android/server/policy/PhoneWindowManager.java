@@ -1619,7 +1619,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
             case LONG_PRESS_POWER_GLOBAL_ACTIONS:
                 mPowerKeyHandled = true;
                 if(!mArielUtils.isPanicModeActive()) {
-                    performHapticFeedback(HapticFeedbackConstants.LONG_PRESS_POWER_BUTTON, false,
+                    performHapticFeedback(HapticFeedbackConstants.LONG_PRESS_POWER_BUTTON,
                         "Power - Long Press - Global Actions");
                     showGlobalActions();
                 }
@@ -7392,10 +7392,6 @@ public class PhoneWindowManager implements WindowManagerPolicy {
             mVrManagerInternal.addPersistentVrModeStateListener(mPersistentVrModeListener);
         }
 
-        mLineageHardware = LineageHardwareManager.getInstance(mContext);
-        // Ensure observe happens in systemReady() since we need
-        // LineageHardwareService to be up and running
-        mSettingsObserver.observe();
         mArielUtils = new ArielUtils(mContext);
 
         readCameraLensCoverState();
