@@ -182,6 +182,9 @@ public class AccountManagerService
 
     final MessageHandler mHandler;
 
+    private static final int TIMEOUT_DELAY_MS = 1000 * 60 * 15;
+    private static final int MAXIMUM_PASSWORD_LENGTH = 1000 * 1000;
+    private static final int STORAGE_LIMIT_PER_USER = 30 * 1000 * 1000;
     // Messages that can be sent on mHandler
     private static final int MESSAGE_TIMED_OUT = 3;
     private static final int MESSAGE_COPY_SHARED_ACCOUNT = 4;
@@ -221,6 +224,8 @@ public class AccountManagerService
         private final TokenCache accountTokenCaches = new TokenCache();
         /** protected by the {@link #cacheLock} */
         private final Map<Account, Map<String, Integer>> visibilityCache = new HashMap<>();
+        /** protected by the {@link #cacheLock} */
+        private final Map<Account, Integer> mCacheSizeForAccount = new HashMap<>();
 
         /** protected by the {@link #mReceiversForType},
          *  type -> (packageName -> number of active receivers)
@@ -1100,6 +1105,65 @@ public class AccountManagerService
         validateAccountsInternal(accounts, true /* invalidateAuthenticatorCache */);
     }
 
+    private int computeEntrySize(@Nullable String key, @Nullable String value) {
+        int keySize = key != null ? key.length() : 1;
+        int valueSize = value != null ? value.length() : 1;
+        return keySize + valueSize + 20;
+    }
+
+    /**
+     * Restricts write operation if account uses too much storage.
+     * Protected by the {@code cacheLock}
+     */
+    private boolean shouldBlockDatabaseWrite(UserAccounts accounts, Account account,
+            @Nullable String key, @Nullable String value) {
+        int usedStorage = accounts.mCacheSizeForAccount.getOrDefault(account, 0);
+        // Estimation is not precise for updates to existing values.
+        usedStorage = usedStorage + computeEntrySize(key, value);
+        accounts.mCacheSizeForAccount.put(account, usedStorage);
+        if (usedStorage < STORAGE_LIMIT_PER_USER / 100) {
+            return false; // 100 is the upper bound for total number of accounts.
+        }
+        long numberOfAccounts = 0;
+        for (Account[] accountsPerType : accounts.accountCache.values()) {
+            if (accountsPerType != null) {
+                numberOfAccounts = numberOfAccounts + accountsPerType.length;
+            }
+        }
+        numberOfAccounts = numberOfAccounts != 0 ? numberOfAccounts : 1; // avoid division by zero.
+        if (usedStorage < STORAGE_LIMIT_PER_USER / numberOfAccounts) {
+            return false;
+        }
+        // Get more precise estimation of the  used storage before blocking operation.
+        recomputeCacheSizeForAccountLocked(accounts, account);
+        usedStorage = accounts.mCacheSizeForAccount.getOrDefault(account, 0);
+        usedStorage = usedStorage + computeEntrySize(key, value);
+        accounts.mCacheSizeForAccount.put(account, usedStorage);
+        if (usedStorage < STORAGE_LIMIT_PER_USER / numberOfAccounts) {
+            return false;
+        }
+        Log.w(TAG, "Account of type=" + account.type + " uses too much storage: " + usedStorage);
+        return true;
+    }
+
+    /** protected by the {@code cacheLock} */
+    private void recomputeCacheSizeForAccountLocked(UserAccounts accounts, Account account) {
+        Map<String, String> userDataForAccount = accounts.userDataCache.get(account);
+        Map<String, String> authTokensForAccount = accounts.authTokenCache.get(account);
+        int usedStorage = 0;
+        if (userDataForAccount != null) {
+            for (Map.Entry<String, String> entry : userDataForAccount.entrySet()) {
+                usedStorage = usedStorage + computeEntrySize(entry.getKey(), entry.getValue());
+            }
+        }
+        if (authTokensForAccount != null) {
+            for (Map.Entry<String, String> entry : authTokensForAccount.entrySet()) {
+                usedStorage = usedStorage + computeEntrySize(entry.getKey(), entry.getValue());
+            }
+        }
+        accounts.mCacheSizeForAccount.put(account, usedStorage);
+    }
+
     /**
      * Validate internal set of accounts against installed authenticators for
      * given user. Clear cached authenticators before validating when requested.
@@ -1164,6 +1228,10 @@ public class AccountManagerService
                             obsoleteAuthType.add(type);
                             // And delete it from the TABLE_META
                             accountsDb.deleteMetaByAuthTypeAndUid(type, uid);
+                        } else if (knownUid != null && knownUid != uid) {
+                            Slog.w(TAG, "authenticator no longer exist for type " + type);
+                            obsoleteAuthType.add(type);
+                            accountsDb.deleteMetaByAuthTypeAndUid(type, uid);
                         }
                     }
                 }
@@ -1213,6 +1281,7 @@ public class AccountManagerService
                             accounts.authTokenCache.remove(account);
                             accounts.accountTokenCaches.remove(account);
                             accounts.visibilityCache.remove(account);
+                            accounts.mCacheSizeForAccount.remove(account);
 
                             for (Entry<String, Integer> packageToVisibility :
                                     packagesToVisibility.entrySet()) {
@@ -1815,6 +1884,10 @@ public class AccountManagerService
             Log.w(TAG, "Account cannot be added - Name longer than 200 chars");
             return false;
         }
+        if (password != null && password.length() > MAXIMUM_PASSWORD_LENGTH) {
+            Log.w(TAG, "Account cannot be added - password is too long");
+            return false;
+        }
         if (!isLocalUnlockedUser(accounts.userId)) {
             Log.w(TAG, "Account " + account.toSafeString() + " cannot be added - user "
                     + accounts.userId + " is locked. callingUid=" + callingUid);
@@ -2116,6 +2189,7 @@ public class AccountManagerService
                         renamedAccount,
                         new AtomicReference<>(accountToRename.name));
                 resultAccount = renamedAccount;
+                recomputeCacheSizeForAccountLocked(accounts, renamedAccount);
 
                 int parentUserId = accounts.userId;
                 if (canHaveProfile(parentUserId)) {
@@ -2493,6 +2567,10 @@ public class AccountManagerService
         cancelNotification(getSigninRequiredNotificationId(accounts, account),
                 UserHandle.of(accounts.userId));
         synchronized (accounts.dbLock) {
+            boolean shouldBlockWrite = false;
+            synchronized (accounts.cacheLock) {
+                shouldBlockWrite = shouldBlockDatabaseWrite(accounts, account, type, authToken);
+            }
             accounts.accountsDb.beginTransaction();
             boolean updateCache = false;
             try {
@@ -2501,6 +2579,11 @@ public class AccountManagerService
                     return false;
                 }
                 accounts.accountsDb.deleteAuthtokensByAccountIdAndType(accountId, type);
+                if (authToken != null && shouldBlockWrite) {
+                    Log.w(TAG, "Too much storage is used - block token update for accountType="
+                            + account.type);
+                    return false; // fail silently.
+                }
                 if (accounts.accountsDb.insertAuthToken(accountId, type, authToken) >= 0) {
                     accounts.accountsDb.setTransactionSuccessful();
                     updateCache = true;
@@ -2608,6 +2691,10 @@ public class AccountManagerService
     private void setPasswordInternal(UserAccounts accounts, Account account, String password,
             int callingUid) {
         if (account == null) {
+            return;
+        }
+        if (password != null && password.length() > MAXIMUM_PASSWORD_LENGTH) {
+            Log.w(TAG, "New password is too long for accountType=" + account.type);
             return;
         }
         boolean isChanged = false;
@@ -2718,6 +2805,14 @@ public class AccountManagerService
     private void setUserdataInternal(UserAccounts accounts, Account account, String key,
             String value) {
         synchronized (accounts.dbLock) {
+            synchronized (accounts.cacheLock) {
+                if (value != null && shouldBlockDatabaseWrite(accounts, account, key, value)) {
+                    Log.w(TAG, "Too much storage is used - block user data update for accountType="
+                            + account.type);
+                    return; // fail silently.
+                }
+            }
+
             accounts.accountsDb.beginTransaction();
             try {
                 long accountId = accounts.accountsDb.findDeAccountId(account);
@@ -2990,6 +3085,12 @@ public class AccountManagerService
                                         "the type and name should not be empty");
                                 return;
                             }
+                            if (!type.equals(mAccountType)) {
+                                onError(AccountManager.ERROR_CODE_INVALID_RESPONSE,
+                                        "incorrect account type");
+                                return;
+                            }
+
                             Account resultAccount = new Account(name, type);
                             if (!customTokens) {
                                 saveAuthTokenToDatabase(
@@ -3474,6 +3575,11 @@ public class AccountManagerService
 
             // Strip auth token from result.
             result.remove(AccountManager.KEY_AUTHTOKEN);
+            if (!checkKeyIntent(Binder.getCallingUid(), result)) {
+                onError(AccountManager.ERROR_CODE_INVALID_RESPONSE,
+                        "invalid intent in bundle returned");
+                return;
+            }
 
             if (Log.isLoggable(TAG, Log.VERBOSE)) {
                 Log.v(TAG,
@@ -4756,6 +4862,7 @@ public class AccountManagerService
             synchronized (mSessions) {
                 mSessions.put(toString(), this);
             }
+            scheduleTimeout();
             if (response != null) {
                 try {
                     response.asBinder().linkToDeath(this, 0 /* flags */);
@@ -4805,6 +4912,9 @@ public class AccountManagerService
                 if (resolveInfo == null) {
                     return false;
                 }
+                if ("content".equals(intent.getScheme())) {
+                    return false;
+                }
                 ActivityInfo targetActivityInfo = resolveInfo.activityInfo;
                 int targetUid = targetActivityInfo.applicationInfo.uid;
                 PackageManagerInternal pmi = LocalServices.getService(PackageManagerInternal.class);
@@ -4819,6 +4929,8 @@ public class AccountManagerService
                     Log.e(TAG, String.format(tmpl, activityName, pkgName, mAccountType));
                     return false;
                 }
+                intent.setComponent(targetActivityInfo.getComponentName());
+                bundle.putParcelable(AccountManager.KEY_INTENT, intent);
                 return true;
             } finally {
                 Binder.restoreCallingIdentity(bid);
@@ -4840,13 +4952,14 @@ public class AccountManagerService
             Bundle simulateBundle = p.readBundle();
             p.recycle();
             Intent intent = bundle.getParcelable(AccountManager.KEY_INTENT);
-            if (intent != null && intent.getClass() != Intent.class) {
-                return false;
-            }
             Intent simulateIntent = simulateBundle.getParcelable(AccountManager.KEY_INTENT);
             if (intent == null) {
                 return (simulateIntent == null);
             }
+            if (intent.getClass() != Intent.class || simulateIntent.getClass() != Intent.class) {
+                return false;
+            }
+
             if (!intent.filterEquals(simulateIntent)) {
                 return false;
             }
@@ -4922,6 +5035,11 @@ public class AccountManagerService
             }
         }
 
+        private void scheduleTimeout() {
+            mHandler.sendMessageDelayed(
+                    mHandler.obtainMessage(MESSAGE_TIMED_OUT, this), TIMEOUT_DELAY_MS);
+        }
+
         public void cancelTimeout() {
             mHandler.removeMessages(MESSAGE_TIMED_OUT, this);
         }
@@ -4958,6 +5076,9 @@ public class AccountManagerService
 
         public void onTimedOut() {
             IAccountManagerResponse response = getResponseAndClose();
+            if (Log.isLoggable(TAG, Log.VERBOSE)) {
+                Log.v(TAG, "Session.onTimedOut");
+            }
             if (response != null) {
                 try {
                     response.onError(AccountManager.ERROR_CODE_REMOTE_EXCEPTION,
@@ -5042,6 +5163,11 @@ public class AccountManagerService
                     } else {
                         if (mStripAuthTokenFromResult) {
                             result.remove(AccountManager.KEY_AUTHTOKEN);
+                            if (!checkKeyIntent(Binder.getCallingUid(), result)) {
+                                onError(AccountManager.ERROR_CODE_INVALID_RESPONSE,
+                                        "invalid intent in bundle returned");
+                                return;
+                            }
                         }
                         if (Log.isLoggable(TAG, Log.VERBOSE)) {
                             Log.v(TAG, getClass().getSimpleName()
@@ -5905,6 +6031,7 @@ public class AccountManagerService
         accounts.authTokenCache.remove(account);
         accounts.previousNameCache.remove(account);
         accounts.visibilityCache.remove(account);
+        accounts.mCacheSizeForAccount.remove(account);
     }
 
     /**
@@ -6079,14 +6206,19 @@ public class AccountManagerService
     protected void writeUserDataIntoCacheLocked(UserAccounts accounts,
             Account account, String key, String value) {
         Map<String, String> userDataForAccount = accounts.userDataCache.get(account);
+        boolean updateCacheSize = false;
         if (userDataForAccount == null) {
             userDataForAccount = accounts.accountsDb.findUserExtrasForAccount(account);
             accounts.userDataCache.put(account, userDataForAccount);
+            updateCacheSize = true;
         }
         if (value == null) {
             userDataForAccount.remove(key);
         } else {
             userDataForAccount.put(key, value);
+        }
+        if (updateCacheSize) {
+            recomputeCacheSizeForAccountLocked(accounts, account);
         }
     }
 
@@ -6106,14 +6238,19 @@ public class AccountManagerService
     protected void writeAuthTokenIntoCacheLocked(UserAccounts accounts,
             Account account, String key, String value) {
         Map<String, String> authTokensForAccount = accounts.authTokenCache.get(account);
+        boolean updateCacheSize = false;
         if (authTokensForAccount == null) {
             authTokensForAccount = accounts.accountsDb.findAuthTokensByAccount(account);
             accounts.authTokenCache.put(account, authTokensForAccount);
+            updateCacheSize = true;
         }
         if (value == null) {
             authTokensForAccount.remove(key);
         } else {
             authTokensForAccount.put(key, value);
+        }
+        if (updateCacheSize) {
+            recomputeCacheSizeForAccountLocked(accounts, account);
         }
     }
 
@@ -6134,6 +6271,7 @@ public class AccountManagerService
                     // need to populate the cache for this account
                     authTokensForAccount = accounts.accountsDb.findAuthTokensByAccount(account);
                     accounts.authTokenCache.put(account, authTokensForAccount);
+                    recomputeCacheSizeForAccountLocked(accounts, account);
                 }
                 return authTokensForAccount.get(authTokenType);
             }
@@ -6155,6 +6293,7 @@ public class AccountManagerService
                         // need to populate the cache for this account
                         userDataForAccount = accounts.accountsDb.findUserExtrasForAccount(account);
                         accounts.userDataCache.put(account, userDataForAccount);
+                        recomputeCacheSizeForAccountLocked(accounts, account);
                     }
                 }
             }

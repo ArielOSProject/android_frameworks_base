@@ -1600,6 +1600,12 @@ public class WindowManagerService extends IWindowManager.Stub
                     ProtoLog.w(WM_ERROR, "Adding more than one toast window for UID at a time.");
                     return WindowManagerGlobal.ADD_DUPLICATE_ADD;
                 }
+                // Because a WindowToken of TYPE_TOAST only allows one toast window, block the
+                // addition of any other toast window to this token.
+                if (addToastWindowRequiresToken && !token.isEmpty()) {
+                    ProtoLog.w(WM_ERROR, "Adding toast window with non-empty token.");
+                    return WindowManagerGlobal.ADD_BAD_APP_TOKEN;
+                }
                 // Make sure this happens before we moved focus as one can make the
                 // toast focusable to force it not being hidden after the timeout.
                 // Focusable toasts are always timed out to prevent a focused app to
@@ -2158,6 +2164,8 @@ public class WindowManagerService extends IWindowManager.Stub
             if (attrs != null) {
                 displayPolicy.adjustWindowParamsLw(win, attrs, pid, uid);
                 win.mToken.adjustWindowParams(win, attrs);
+                attrs.privateFlags = sanitizePrivateFlags(attrs.privateFlags,
+                        win.mAttrs.privateFlags, win.getName(), uid, pid);
                 attrs.flags = sanitizeFlagSlippery(attrs.flags, win.getName(), uid, pid);
                 // if they don't have the permission, mask out the status bar bits
                 if (seq == win.mSeq) {
@@ -8078,6 +8086,35 @@ public class WindowManagerService extends IWindowManager.Stub
             return flags & ~FLAG_SLIPPERY;
         }
         return flags;
+    }
+
+    private boolean hasFlags(int flags, int mask) {
+        return (flags & mask) != 0;
+    }
+
+    private boolean hasPermission(String permission, int callingPid, int callingUid) {
+        return mContext.checkPermission(permission, callingPid, callingUid)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    /**
+     * Ensure the caller has the right permissions to be able to set the requested private flags.
+     */
+    private int sanitizePrivateFlags(int newPrivateFlags, int oldPrivateFlags, String windowName,
+            int callingUid, int callingPid) {
+        final int addedPrivateFlags = ~oldPrivateFlags & newPrivateFlags;
+        int sanitizedFlags = newPrivateFlags;
+        if (hasFlags(addedPrivateFlags,
+                (PRIVATE_FLAG_IS_ROUNDED_CORNERS_OVERLAY| PRIVATE_FLAG_TRUSTED_OVERLAY))
+                && !hasPermission(android.Manifest.permission.INTERNAL_SYSTEM_WINDOW,
+                    callingUid, callingPid)) {
+            Slog.w(TAG, "Removing PRIVATE_FLAG_IS_ROUNDED_CORNERS_OVERLAY or"
+                    + " PRIVATE_FLAG_TRUSTED_OVERLAY from '" + windowName
+                    + "' because it doesn't have INTERNAL_SYSTEM_WINDOW permission");
+            sanitizedFlags &=
+                    ~(PRIVATE_FLAG_IS_ROUNDED_CORNERS_OVERLAY | PRIVATE_FLAG_TRUSTED_OVERLAY);
+        }
+        return sanitizedFlags;
     }
 
     /**

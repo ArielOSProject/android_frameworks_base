@@ -4211,6 +4211,9 @@
         <!-- <item>0:2:15</item>  ID0:Fingerprint:Strong -->
     </string-array>
 
+    <!-- Indicates whether device has a power button fingerprint sensor. -->
+    <bool name="config_is_powerbutton_fps" translatable="false" >false</bool>
+
     <!-- Messages that should not be shown to the user during face auth enrollment. This should be
          used to hide messages that may be too chatty or messages that the user can't do much about.
          Entries are defined in android.hardware.biometrics.face@1.0 types.hal -->
@@ -4406,4 +4409,8 @@
 
     <!-- Component names of the services which will keep critical code path warm -->
     <string-array name="config_keep_warming_services" translatable="false" />
+
+    <!-- List of protected packages that require biometric authentication for modification
+         (Disable, force-stop or uninstalling updates). -->
+    <string-array name="config_biometric_protected_package_names" translatable="false" />
 </resources>

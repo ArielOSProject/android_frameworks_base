@@ -2682,6 +2682,9 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
             }
             if (!isVisibleByPolicy()) {
                 mWinAnimator.hide("checkPolicyVisibilityChange");
+                if (mSurfaceControl != null) {
+                    getPendingTransaction().hide(mSurfaceControl);
+                }
                 if (isFocused()) {
                     ProtoLog.i(WM_DEBUG_FOCUS_LIGHT,
                             "setAnimationLocked: setting mFocusMayChange true");
@@ -2979,6 +2982,9 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
         }
         setPolicyVisibilityFlag(LEGACY_POLICY_VISIBILITY);
         mLegacyPolicyVisibilityAfterAnim = true;
+        if (mSurfaceControl != null) {
+            getPendingTransaction().show(mSurfaceControl);
+        }
         if (doAnimation) {
             mWinAnimator.applyAnimationLocked(TRANSIT_ENTER, true);
         }
@@ -3001,6 +3007,16 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
             if (!mToken.okToAnimate()) {
                 doAnimation = false;
             }
+            if (mForceHideNonSystemOverlayWindow || mHiddenWhileSuspended
+                    || !mAppOpVisibility || mPermanentlyHidden) {
+                if (isAnimating()) {
+                    if (mAnimatingExit) {
+                        // Hide immediately if the window is playing an exit animation.
+                        doAnimation = false;
+                    }
+                    cancelAnimation();
+                }
+            }
         }
         boolean current =
                 doAnimation ? mLegacyPolicyVisibilityAfterAnim : isLegacyPolicyVisibility();
@@ -3009,8 +3025,10 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
             return false;
         }
         if (doAnimation) {
-            mWinAnimator.applyAnimationLocked(TRANSIT_EXIT, false);
-            if (!isAnimating(TRANSITION | PARENTS)) {
+            // If a hide animation is applied, then let onAnimationFinished
+            // -> checkPolicyVisibilityChange hide the window. Otherwise make doAnimation false
+            // to commit invisible immediately.
+            if (!mWinAnimator.applyAnimationLocked(TRANSIT_EXIT, false /* isEntrance */)) {
                 doAnimation = false;
             }
         }
@@ -3028,6 +3046,9 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
                         "WindowState.hideLw: setting mFocusMayChange true");
                 mWmService.mFocusMayChange = true;
             }
+            if (mSurfaceControl != null) {
+                getPendingTransaction().hide(mSurfaceControl);
+            }
         }
         if (requestAnim) {
             mWmService.scheduleAnimationLocked();
@@ -3038,9 +3059,14 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
         return true;
     }
 
+    boolean isForceHiddenNonSystemOverlayWindow() {
+        return mForceHideNonSystemOverlayWindow;
+    }
+
     void setForceHideNonSystemOverlayWindowIfNeeded(boolean forceHide) {
+        final int baseType = getBaseType();
         if (mOwnerCanAddInternalSystemWindow
-                || (!isSystemAlertWindowType(mAttrs.type) && mAttrs.type != TYPE_TOAST)) {
+                || (!isSystemAlertWindowType(baseType) && baseType != TYPE_TOAST)) {
             return;
         }
         if (mForceHideNonSystemOverlayWindow == forceHide) {

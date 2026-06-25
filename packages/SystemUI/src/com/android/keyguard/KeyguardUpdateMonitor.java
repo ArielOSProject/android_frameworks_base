@@ -107,6 +107,7 @@ import com.android.systemui.util.RingerModeTracker;
 import com.google.android.collect.Lists;
 
 import lineageos.app.LineageContextConstants;
+import lineageos.providers.LineageSettings;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
@@ -266,6 +267,7 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener, Dumpab
     private final ArrayList<WeakReference<KeyguardUpdateMonitorCallback>>
             mCallbacks = Lists.newArrayList();
     private ContentObserver mDeviceProvisionedObserver;
+    private ContentObserver mSettingsChangeObserver;
 
     private boolean mSwitchingUser;
 
@@ -290,7 +292,7 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener, Dumpab
     private int mActiveMobileDataSubscription = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
     private final Executor mBackgroundExecutor;
 
-    private final boolean mFingerprintWakeAndUnlock;
+    private boolean mFingerprintWakeAndUnlock;
 
     private SecurityInterface mArielSecurityInterface;
 
@@ -1578,8 +1580,6 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener, Dumpab
         mSubscriptionManager = SubscriptionManager.from(context);
         mDeviceProvisioned = isDeviceProvisionedInSettingsDb();
         mStrongAuthTracker = new StrongAuthTracker(context, this::notifyStrongAuthStateChanged);
-        mFingerprintWakeAndUnlock = mContext.getResources().getBoolean(
-                com.android.systemui.R.bool.config_fingerprintWakeAndUnlock);
         mBackgroundExecutor = backgroundExecutor;
         mBroadcastDispatcher = broadcastDispatcher;
         mRingerModeTracker = ringerModeTracker;
@@ -1587,6 +1587,8 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener, Dumpab
         mLockPatternUtils = lockPatternUtils;
         mArielSecurityInterface = SecurityManager.getInstance(context);
         dumpManager.registerDumpable(getClass().getName(), this);
+
+        updateFingerprintSettings();
 
         mHandler = new Handler(mainLooper) {
             @Override
@@ -1830,6 +1832,32 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener, Dumpab
                     }
                 }
             }
+        }
+
+        mSettingsChangeObserver = new ContentObserver(mHandler) {
+            @Override
+            public void onChange(boolean selfChange) {
+                updateFingerprintSettings();
+            }
+        };
+        mContext.getContentResolver().registerContentObserver(
+                LineageSettings.System.getUriFor(LineageSettings.System.FINGERPRINT_WAKE_UNLOCK),
+                false, mSettingsChangeObserver, UserHandle.USER_ALL);
+    }
+
+    private void updateFingerprintSettings() {
+        boolean defFingerprintSettings = mContext.getResources().getBoolean(
+                com.android.systemui.R.bool.config_fingerprintWakeAndUnlock);
+        if (defFingerprintSettings) {
+            mFingerprintWakeAndUnlock = LineageSettings.System.getIntForUser(
+                    mContext.getContentResolver(), LineageSettings.System.FINGERPRINT_WAKE_UNLOCK,
+                    1, UserHandle.USER_CURRENT) == 1;
+        } else {
+            mFingerprintWakeAndUnlock = defFingerprintSettings;
+            // if its false, the device meant to be used like that, disable toggle with 2.
+            LineageSettings.System.putIntForUser(mContext.getContentResolver(),
+                    LineageSettings.System.FINGERPRINT_WAKE_UNLOCK,
+                    2, UserHandle.USER_CURRENT);
         }
     }
 
@@ -2983,6 +3011,10 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener, Dumpab
 
         if (mDeviceProvisionedObserver != null) {
             mContext.getContentResolver().unregisterContentObserver(mDeviceProvisionedObserver);
+        }
+
+        if (mSettingsChangeObserver != null) {
+            mContext.getContentResolver().unregisterContentObserver(mSettingsChangeObserver);
         }
 
         try {

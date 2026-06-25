@@ -210,6 +210,12 @@ public class AppOpsService extends IAppOpsService.Stub {
      *  {@link #upgradeLocked(int)} below. The first version was 1 */
     private static final int CURRENT_VERSION = 1;
 
+    /**
+     * The upper limit of total number of attributed op entries that can be returned in a binder
+     * transaction to avoid TransactionTooLargeException
+     */
+    private static final int NUM_ATTRIBUTED_OP_ENTRY_THRESHOLD = 2000;
+
     // Write at most every 30 minutes.
     static final long WRITE_DELAY = DEBUG ? 1000 : 30*60*1000;
 
@@ -1915,11 +1921,19 @@ public class AppOpsService extends IAppOpsService.Stub {
     private ArrayList<AppOpsManager.OpEntry> collectOps(Ops pkgOps, int[] ops) {
         ArrayList<AppOpsManager.OpEntry> resOps = null;
         final long elapsedNow = SystemClock.elapsedRealtime();
+
+        int totalAttributedOpEntryCount = 0;
+
         if (ops == null) {
             resOps = new ArrayList<>();
             for (int j=0; j<pkgOps.size(); j++) {
                 Op curOp = pkgOps.valueAt(j);
-                resOps.add(getOpEntryForResult(curOp, elapsedNow));
+                if (totalAttributedOpEntryCount > NUM_ATTRIBUTED_OP_ENTRY_THRESHOLD) {
+                    break;
+                }
+                OpEntry opEntry = getOpEntryForResult(curOp, elapsedNow);
+                resOps.add(opEntry);
+                totalAttributedOpEntryCount += opEntry.getAttributedOpEntries().size();
             }
         } else {
             for (int j=0; j<ops.length; j++) {
@@ -1928,10 +1942,21 @@ public class AppOpsService extends IAppOpsService.Stub {
                     if (resOps == null) {
                         resOps = new ArrayList<>();
                     }
-                    resOps.add(getOpEntryForResult(curOp, elapsedNow));
+                    if (totalAttributedOpEntryCount > NUM_ATTRIBUTED_OP_ENTRY_THRESHOLD) {
+                        break;
+                    }
+                    OpEntry opEntry = getOpEntryForResult(curOp, elapsedNow);
+                    resOps.add(opEntry);
+                    totalAttributedOpEntryCount += opEntry.getAttributedOpEntries().size();
                 }
             }
         }
+
+        if (totalAttributedOpEntryCount > NUM_ATTRIBUTED_OP_ENTRY_THRESHOLD) {
+            Slog.w(TAG, "The number of attributed op entries has exceeded the threshold. This "
+                    + "could be due to DoS attack from malicious apps. The result is throttled.");
+        }
+
         return resOps;
     }
 
@@ -2921,7 +2946,6 @@ public class AppOpsService extends IAppOpsService.Stub {
             Slog.e(TAG, "checkOperation", e);
             return AppOpsManager.opToDefaultMode(code);
         }
-
         if (isOpRestrictedDueToSuspend(code, packageName, uid)) {
             return AppOpsManager.MODE_IGNORED;
         }
@@ -3090,6 +3114,13 @@ public class AppOpsService extends IAppOpsService.Stub {
         } catch (SecurityException e) {
             Slog.e(TAG, "noteOperation", e);
             return AppOpsManager.MODE_ERRORED;
+        }
+        if (isOpRestrictedDueToSuspend(code, packageName, uid)) {
+            return AppOpsManager.MODE_IGNORED;
+        }
+        if (proxyAttributionTag != null
+                && !isAttributionTagDefined(packageName, proxyPackageName, proxyAttributionTag)) {
+            proxyAttributionTag = null;
         }
 
         synchronized (this) {
@@ -3956,6 +3987,55 @@ public class AppOpsService extends IAppOpsService.Stub {
         }
 
         return bypass;
+    }
+
+    private boolean isAttributionInPackage(@Nullable AndroidPackage pkg,
+            @Nullable String attributionTag) {
+        if (pkg == null) {
+            return false;
+        } else if (attributionTag == null) {
+            return true;
+        }
+        if (pkg.getAttributions() != null) {
+            int numAttributions = pkg.getAttributions().size();
+            for (int i = 0; i < numAttributions; i++) {
+                if (pkg.getAttributions().get(i).tag.equals(attributionTag)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Checks to see if the attribution tag is defined in either package or proxyPackage.
+     * This method is intended for ProxyAttributionTag validation and returns false
+     * if it does not exist in either one of them.
+     *
+     * @param packageName Name of the package
+     * @param proxyPackageName Name of the proxy package
+     * @param attributionTag attribution tag to be checked
+     *
+     * @return boolean specifying if attribution tag is valid or not
+     */
+    private boolean isAttributionTagDefined(@Nullable String packageName,
+                                            @Nullable String proxyPackageName,
+                                            @Nullable String attributionTag) {
+        if (packageName == null) {
+            return false;
+        } else if (attributionTag == null) {
+            return true;
+        }
+        PackageManagerInternal pmInt = LocalServices.getService(PackageManagerInternal.class);
+        if (proxyPackageName != null) {
+            AndroidPackage proxyPkg = pmInt.getPackage(proxyPackageName);
+            if (proxyPkg != null && isAttributionInPackage(proxyPkg, attributionTag)) {
+                return true;
+            }
+        }
+        AndroidPackage pkg = pmInt.getPackage(packageName);
+        return isAttributionInPackage(pkg, attributionTag);
     }
 
     /**
