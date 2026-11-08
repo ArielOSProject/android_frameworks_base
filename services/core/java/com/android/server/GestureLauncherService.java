@@ -470,9 +470,9 @@ public class GestureLauncherService extends SystemService {
      * Whether to enable emergency gesture.
      */
     public static boolean isEmergencyGestureSettingEnabled(Context context, int userId) {
-        return isEmergencyGestureEnabled(context.getResources())
-                && Settings.Secure.getIntForUser(context.getContentResolver(),
-                Settings.Secure.EMERGENCY_GESTURE_ENABLED, 1, userId) != 0;
+        // ArielOS: panic mode rides on this gesture and must always be armed, so the user-facing
+        // Emergency SOS toggle (Settings.Secure.EMERGENCY_GESTURE_ENABLED) is ignored.
+        return isEmergencyGestureEnabled(context.getResources());
     }
 
     /**
