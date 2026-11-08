@@ -71,10 +71,22 @@ public class GestureLauncherService extends SystemService {
      * Time in milliseconds in which the power button must be pressed twice so it will be considered
      * as a camera launch.
      */
-    // Ariel mod: original value was 300
-    @VisibleForTesting static final long CAMERA_POWER_DOUBLE_TAP_MAX_TIME_MS = 400;
+    @VisibleForTesting static final long CAMERA_POWER_DOUBLE_TAP_MAX_TIME_MS = 300;
 
-    static final long ARIEL_PANIC_MODE_TAP_INTERVAL_MS = 300;
+    /**
+     * ArielOS: number of fast power button taps (each gap under
+     * {@link #CAMERA_POWER_DOUBLE_TAP_MAX_TIME_MS}) that activates panic mode.
+     */
+    @VisibleForTesting static final int ARIEL_PANIC_MODE_TAP_COUNT = 5;
+
+    /** Number of fast power button taps that launches the camera. */
+    private static final int CAMERA_POWER_TAP_COUNT_THRESHOLD = 2;
+
+    /**
+     * ArielOS: a panic sequence of 5 taps must take longer than this, otherwise it is treated as
+     * a stuck or bouncing button. Same value AOSP uses for the emergency gesture.
+     */
+    @VisibleForTesting static final long ARIEL_PANIC_MODE_MIN_SEQUENCE_MS = 200;
 
     /**
      * Interval in milliseconds in which the power button must be depressed in succession to be
@@ -82,7 +94,7 @@ public class GestureLauncherService extends SystemService {
      * the camera launch gesture, because the purpose of this threshold is to measure the
      * frequency of consecutive taps, for evaluation for future gestures.
      */
-    @VisibleForTesting static final long POWER_SHORT_TAP_SEQUENCE_MAX_INTERVAL_MS = 600;
+    @VisibleForTesting static final long POWER_SHORT_TAP_SEQUENCE_MAX_INTERVAL_MS = 500;
 
     /** The listener that receives the gesture event. */
     private final GestureEventListener mGestureListener = new GestureEventListener();
@@ -137,7 +149,11 @@ public class GestureLauncherService extends SystemService {
      */
     private boolean mCameraDoubleTapPowerEnabled;
     private long mLastPowerDown;
+    private long mFirstPowerDown;
+    /** Taps in a row with a gap under {@link #POWER_SHORT_TAP_SEQUENCE_MAX_INTERVAL_MS}. */
     private int mPowerButtonConsecutiveTaps;
+    /** ArielOS: taps in a row with a gap under {@link #CAMERA_POWER_DOUBLE_TAP_MAX_TIME_MS}. */
+    private int mPowerButtonFastConsecutiveTaps;
     private final UiEventLogger mUiEventLogger;
 
     private ArielUtils mArielUtils;
@@ -388,71 +404,121 @@ public class GestureLauncherService extends SystemService {
      * Whether GestureLauncherService should be enabled according to system properties.
      */
     public static boolean isGestureLauncherEnabled(Resources resources) {
-        return isCameraLaunchEnabled(resources) || isCameraDoubleTapPowerEnabled(resources) ||
-                isCameraLiftTriggerEnabled(resources);
+        // ArielOS: panic mode detection lives in this service, so it must always run.
+        return true;
     }
 
     public boolean interceptPowerKeyDown(KeyEvent event, boolean interactive,
             MutableBoolean outLaunched) {
+        if (isPanicModeActive()) {
+            // ArielOS: the power button is dead until Ariel Guardian ends panic mode.
+            outLaunched.value = false;
+            return true;
+        }
         if (event.isLongPress()) {
             // Long presses are sent as a second key down. If the long press threshold is set lower
             // than the double tap of sequence interval thresholds, this could cause false double
             // taps or consecutive taps, so we want to ignore the long press event.
+            outLaunched.value = false;
             return false;
         }
-        boolean launched = false;
+        boolean launchCamera = false;
+        boolean launchPanic = false;
         boolean intercept = false;
         long powerTapInterval;
-        boolean panicModeLaunched = false;
         synchronized (this) {
             powerTapInterval = event.getEventTime() - mLastPowerDown;
-            if (powerTapInterval < ARIEL_PANIC_MODE_TAP_INTERVAL_MS) {
-                // count as panic mode tap, rappid pressing
-                Slog.i(TAG, "Inside the panic mode tap check block");
-                panicModeLaunched = true;
-                intercept = true;
-                mPowerButtonConsecutiveTaps++;
-            } else if (mCameraDoubleTapPowerEnabled
-                    && powerTapInterval < CAMERA_POWER_DOUBLE_TAP_MAX_TIME_MS) {
-                Slog.i(TAG, "Inside the camera double tap check block");
-                launched = true;
-                intercept = interactive;
-                mPowerButtonConsecutiveTaps++;
-            } else if (powerTapInterval < POWER_SHORT_TAP_SEQUENCE_MAX_INTERVAL_MS) {
-                Slog.i(TAG, "Inside the block with POWER_SHORT_TAP_SEQUENCE_MAX_INTERVAL_MS condition");
+            mLastPowerDown = event.getEventTime();
+            if (powerTapInterval >= POWER_SHORT_TAP_SEQUENCE_MAX_INTERVAL_MS) {
+                // Tap too slow, reset consecutive tap counts.
+                mFirstPowerDown = event.getEventTime();
+                mPowerButtonFastConsecutiveTaps = 1;
+                mPowerButtonConsecutiveTaps = 1;
+            } else if (powerTapInterval >= CAMERA_POWER_DOUBLE_TAP_MAX_TIME_MS) {
+                // Tap too slow for shortcuts
+                mFirstPowerDown = event.getEventTime();
+                mPowerButtonFastConsecutiveTaps = 1;
                 mPowerButtonConsecutiveTaps++;
             } else {
-                Slog.i(TAG, "Inside the block that resets power press count to 1");
-                mPowerButtonConsecutiveTaps = 1;
+                // Fast consecutive tap
+                mPowerButtonFastConsecutiveTaps++;
+                mPowerButtonConsecutiveTaps++;
             }
-            mLastPowerDown = event.getEventTime();
+            // Commit to intercepting the power key after the second fast tap, so the screen does
+            // not toggle between camera launch and panic mode.
+            if (mPowerButtonFastConsecutiveTaps > 1) {
+                intercept = interactive;
+            }
+            if (mPowerButtonFastConsecutiveTaps == ARIEL_PANIC_MODE_TAP_COUNT) {
+                long sequenceTime = event.getEventTime() - mFirstPowerDown;
+                if (sequenceTime <= ARIEL_PANIC_MODE_MIN_SEQUENCE_MS) {
+                    Slog.i(TAG, "Panic gesture detected but it's too fast. Gesture time: "
+                            + sequenceTime + " ms");
+                    mFirstPowerDown = event.getEventTime();
+                    mPowerButtonFastConsecutiveTaps = 1;
+                    mPowerButtonConsecutiveTaps = 1;
+                } else {
+                    launchPanic = true;
+                }
+            }
+            if (mCameraDoubleTapPowerEnabled
+                    && mPowerButtonFastConsecutiveTaps == CAMERA_POWER_TAP_COUNT_THRESHOLD) {
+                launchCamera = true;
+            }
         }
         if (DBG && mPowerButtonConsecutiveTaps > 1) {
             Slog.i(TAG, Long.valueOf(mPowerButtonConsecutiveTaps) +
                     " consecutive power button taps detected");
         }
-        if (launched) {
+        if (launchCamera) {
             Slog.i(TAG, "Power button double tap gesture detected, launching camera. Interval="
                     + powerTapInterval + "ms");
-            launched = handleCameraGesture(false /* useWakelock */,
+            launchCamera = handleCameraGesture(false /* useWakelock */,
                     StatusBarManager.CAMERA_LAUNCH_SOURCE_POWER_DOUBLE_TAP);
-            if (launched) {
+            if (launchCamera) {
                 mMetricsLogger.action(MetricsEvent.ACTION_DOUBLE_TAP_POWER_CAMERA_GESTURE,
                         (int) powerTapInterval);
                 mUiEventLogger.log(GestureLauncherEvent.GESTURE_CAMERA_DOUBLE_TAP_POWER);
             }
-        }
-        if(panicModeLaunched && mPowerButtonConsecutiveTaps >= 4) {
-            if(!mArielUtils.isPanicModeActive()) {
-                Slog.i(TAG, "!!! ACTIVATE PANIC MODE !!!");
-                ArielSettings.Secure.putInt(mContext.getContentResolver(), 
-                    ArielSettings.Secure.PANIC_MODE, 1);        
-            }
+        } else if (launchPanic) {
+            Slog.i(TAG, "Panic gesture detected, activating panic mode.");
+            launchPanic = activatePanicMode();
         }
         mMetricsLogger.histogram("power_consecutive_short_tap_count", mPowerButtonConsecutiveTaps);
         mMetricsLogger.histogram("power_double_tap_interval", (int) powerTapInterval);
-        outLaunched.value = launched || panicModeLaunched;
-        return intercept && (launched || panicModeLaunched);
+
+        outLaunched.value = launchCamera || launchPanic;
+        // Intercept the power key if the press is part of a gesture and the user has finished
+        // setup.
+        return intercept && isUserSetupComplete();
+    }
+
+    /**
+     * ArielOS: turns panic mode on; Ariel Guardian reacts to the setting.
+     *
+     * @return true if panic mode is (now) active, false if user setup is not complete.
+     */
+    @VisibleForTesting
+    boolean activatePanicMode() {
+        if (!isUserSetupComplete()) {
+            return false;
+        }
+        if (!isPanicModeActive()) {
+            Slog.i(TAG, "!!! ACTIVATE PANIC MODE !!!");
+            ArielSettings.Secure.putInt(mContext.getContentResolver(),
+                    ArielSettings.Secure.PANIC_MODE, 1);
+        }
+        return true;
+    }
+
+    @VisibleForTesting
+    boolean isPanicModeActive() {
+        return mArielUtils.isPanicModeActive();
+    }
+
+    private boolean isUserSetupComplete() {
+        return Settings.Secure.getIntForUser(mContext.getContentResolver(),
+                Settings.Secure.USER_SETUP_COMPLETE, 0, UserHandle.USER_CURRENT) != 0;
     }
 
     /**

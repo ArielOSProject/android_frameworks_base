@@ -22,7 +22,9 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Matchers.anyInt;
 import static org.mockito.Matchers.eq;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -110,8 +112,11 @@ public class GestureLauncherServiceTest {
         mContentResolver.addProvider(Settings.AUTHORITY, new FakeSettingsProvider());
         when(mContext.getContentResolver()).thenReturn(mContentResolver);
 
-        mGestureLauncherService = new GestureLauncherService(mContext, mMetricsLogger,
-                mUiEventLogger);
+        // ArielOS: the real panic mode check needs the Ariel settings provider.
+        mGestureLauncherService = spy(new GestureLauncherService(mContext, mMetricsLogger,
+                mUiEventLogger));
+        doReturn(false).when(mGestureLauncherService).isPanicModeActive();
+        doReturn(true).when(mGestureLauncherService).activatePanicMode();
     }
 
     @Test
@@ -889,6 +894,77 @@ public class GestureLauncherServiceTest {
         List<Integer> tapCounts = tapCountCaptor.getAllValues();
         assertEquals(1, tapCounts.get(0).intValue());
         assertEquals(1, tapCounts.get(1).intValue());
+    }
+
+    @Test
+    public void testInterceptPowerKeyDown_fiveFastTapsActivatePanicMode() {
+        withUserSetupCompleteValue(true);
+        MutableBoolean outLaunched = new MutableBoolean(false);
+        // 5 taps, each 250ms apart: every gap is fast and the sequence takes 1000ms.
+        for (int i = 0; i < 5; i++) {
+            pressPower(INITIAL_EVENT_TIME_MILLIS + i * 250L, outLaunched);
+        }
+        verify(mGestureLauncherService, times(1)).activatePanicMode();
+        assertTrue(outLaunched.value);
+    }
+
+    @Test
+    public void testInterceptPowerKeyDown_fourSlowTapsAndOneFastDoNotActivatePanicMode() {
+        withUserSetupCompleteValue(true);
+        MutableBoolean outLaunched = new MutableBoolean(false);
+        long eventTime = INITIAL_EVENT_TIME_MILLIS;
+        // 4 taps, each 400ms apart (too slow for the shortcuts, short enough to be a sequence).
+        for (int i = 0; i < 4; i++) {
+            pressPower(eventTime, outLaunched);
+            eventTime += 400L;
+        }
+        // One fast tap must not complete a panic sequence.
+        pressPower(eventTime - 400L + 250L, outLaunched);
+        verify(mGestureLauncherService, never()).activatePanicMode();
+        assertFalse(outLaunched.value);
+    }
+
+    @Test
+    public void testInterceptPowerKeyDown_tooFastSequenceDoesNotActivatePanicMode() {
+        withUserSetupCompleteValue(true);
+        MutableBoolean outLaunched = new MutableBoolean(false);
+        // 5 taps 40ms apart take 160ms, which is a bouncing button, not a person.
+        for (int i = 0; i < 5; i++) {
+            pressPower(INITIAL_EVENT_TIME_MILLIS + i * 40L, outLaunched);
+        }
+        verify(mGestureLauncherService, never()).activatePanicMode();
+        assertFalse(outLaunched.value);
+    }
+
+    @Test
+    public void testInterceptPowerKeyDown_secondFastTapLaunchesCamera() {
+        withCameraDoubleTapPowerEnableConfigValue(true);
+        withCameraDoubleTapPowerDisableSettingValue(0);
+        mGestureLauncherService.updateCameraDoubleTapPowerEnabled();
+        withUserSetupCompleteValue(true);
+        MutableBoolean outLaunched = new MutableBoolean(false);
+        pressPower(INITIAL_EVENT_TIME_MILLIS, outLaunched);
+        assertFalse(outLaunched.value);
+        pressPower(INITIAL_EVENT_TIME_MILLIS + 200L, outLaunched);
+        assertTrue(outLaunched.value);
+        verify(mStatusBarManagerInternal).onCameraLaunchGestureDetected(
+                StatusBarManager.CAMERA_LAUNCH_SOURCE_POWER_DOUBLE_TAP);
+        verify(mGestureLauncherService, never()).activatePanicMode();
+    }
+
+    @Test
+    public void testInterceptPowerKeyDown_panicModeActiveBlocksPowerButton() {
+        doReturn(true).when(mGestureLauncherService).isPanicModeActive();
+        MutableBoolean outLaunched = new MutableBoolean(true);
+        assertTrue(pressPower(INITIAL_EVENT_TIME_MILLIS, outLaunched));
+        assertFalse(outLaunched.value);
+    }
+
+    private boolean pressPower(long eventTime, MutableBoolean outLaunched) {
+        KeyEvent keyEvent = new KeyEvent(IGNORED_DOWN_TIME, eventTime, IGNORED_ACTION, IGNORED_CODE,
+                IGNORED_REPEAT);
+        return mGestureLauncherService.interceptPowerKeyDown(keyEvent, true /* interactive */,
+                outLaunched);
     }
 
     private void withCameraDoubleTapPowerEnableConfigValue(boolean enableConfigValue) {
