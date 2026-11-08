@@ -166,10 +166,11 @@ public class GestureLauncherServiceTest {
     }
 
     @Test
-    public void testIsEmergencyGestureSettingEnabled_settingDisabled() {
+    public void testIsEmergencyGestureSettingEnabled_settingDisabledStillEnabled() {
+        // ArielOS: panic mode is always armed, the Emergency SOS toggle is ignored.
         withEmergencyGestureEnabledConfigValue(true);
         withEmergencyGestureEnabledSettingValue(false);
-        assertFalse(mGestureLauncherService.isEmergencyGestureSettingEnabled(
+        assertTrue(mGestureLauncherService.isEmergencyGestureSettingEnabled(
                 mContext, FAKE_USER_ID));
     }
 
