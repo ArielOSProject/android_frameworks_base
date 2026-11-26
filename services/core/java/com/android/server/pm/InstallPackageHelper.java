@@ -1501,6 +1501,10 @@ final class InstallPackageHelper {
 
         String pkgName = parsedPackage.getPackageName();
         request.setName(pkgName);
+        if (mPm.isPackageDeviceAdmin(pkgName, request.getUserId()) && onExternal) {
+            throw new PrepareFailure(INSTALL_FAILED_INVALID_INSTALL_LOCATION,
+                    "Device Admin can only be installed on internal storage.");
+        }
         if (parsedPackage.isTestOnly()) {
             if ((installFlags & PackageManager.INSTALL_ALLOW_TEST) == 0) {
                 throw new PrepareFailure(INSTALL_FAILED_TEST_ONLY,
@@ -1629,6 +1633,20 @@ final class InstallPackageHelper {
                         mSharedLibraries.getLatestStaticSharedLibraVersion(parsedPackage);
                 if (libraryInfo != null) {
                     signatureCheckPs = mPm.mSettings.getPackageLPr(libraryInfo.getPackageName());
+                }
+
+                WatchedLongSparseArray<SharedLibraryInfo> libraryInfos =
+                        mSharedLibraries.getSharedLibraryInfos(
+                                parsedPackage.getStaticSharedLibraryName());
+                if (libraryInfos != null && libraryInfos.size() > 0) {
+                    SharedLibraryInfo anyStaticLib = libraryInfos.valueAt(0);
+                    if (anyStaticLib.isStatic() && !anyStaticLib.getDeclaringPackage()
+                            .getPackageName().equals(parsedPackage.getManifestPackageName())) {
+                        throw new PrepareFailure(INSTALL_FAILED_DUPLICATE_PACKAGE,
+                                "The static library being installed has a different declaring"
+                                        + " package than existing static library with the same"
+                                        + " name");
+                    }
                 }
             }
 

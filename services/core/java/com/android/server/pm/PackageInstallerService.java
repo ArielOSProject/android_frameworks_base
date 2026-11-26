@@ -696,6 +696,17 @@ public class PackageInstallerService extends IPackageInstaller.Stub implements
             }
         }
 
+        if ((params.installFlags & PackageManager.INSTALL_ENABLE_ROLLBACK) != 0) {
+            if (mContext.checkCallingOrSelfPermission(Manifest.permission.MANAGE_ROLLBACKS)
+                    != PackageManager.PERMISSION_GRANTED &&
+                    mContext.checkCallingOrSelfPermission(Manifest.permission.TEST_MANAGE_ROLLBACKS)
+                    != PackageManager.PERMISSION_GRANTED) {
+                throw new SecurityException(
+                        "INSTALL_ENABLE_ROLLBACK requires the MANAGE_ROLLBACKS permission or the "
+                                + "TEST_MANAGE_ROLLBACKS permission");
+            }
+        }
+
         // App package name and label length is restricted so that really long strings aren't
         // written to disk.
         if (params.appPackageName != null && !isValidPackageName(params.appPackageName)) {
@@ -799,6 +810,16 @@ public class PackageInstallerService extends IPackageInstaller.Stub implements
                         != PackageManager.PERMISSION_GRANTED) {
                     throw new SecurityException(
                             "Setting rollback lifetime requires the MANAGE_ROLLBACKS permission");
+                }
+                final long maxRollbackLifetimeMillis = 365 * DateUtils.DAY_IN_MILLIS;
+                if (params.rollbackLifetimeMillis > maxRollbackLifetimeMillis) {
+                    Slog.e(
+                            TAG,
+                            "rollbackLifetimeMillis "
+                                    + params.rollbackLifetimeMillis
+                                    + " exceeds the maximum allowed. Capping to "
+                                    + maxRollbackLifetimeMillis);
+                    params.rollbackLifetimeMillis = maxRollbackLifetimeMillis;
                 }
             } else if (params.rollbackLifetimeMillis < 0) {
                 throw new IllegalArgumentException("rollbackLifetimeMillis can't be negative.");
@@ -977,6 +998,11 @@ public class PackageInstallerService extends IPackageInstaller.Stub implements
                 } finally {
                     Binder.restoreCallingIdentity(ident);
                 }
+            }
+            if (params.volumeUuid != null && params.appPackageName != null
+                    && mPm.isPackageDeviceAdmin(params.appPackageName, userId)) {
+                throw new IllegalArgumentException(
+                        "Device Admin can only be installed on internal storage.");
             }
         }
 
